@@ -3,6 +3,7 @@ export { SEV, CAT } from "./tokens";
 export { Button } from "./Button";
 export { IconBtn } from "./IconBtn";
 export { Badge, SeverityBadge, CategoryTag } from "./Badge";
+export { RunCostBadge, formatCost, formatTokenFlow } from "./RunCostBadge";
 export { Chip } from "./Chip";
 export { Avatar } from "./Avatar";
 export { ConfidenceNum } from "./ConfidenceNum";

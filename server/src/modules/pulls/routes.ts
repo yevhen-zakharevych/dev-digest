@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { PrMeta, PrDetail, GitHubClient, PrReviewComment } from '@devdigest/shared';
 import { PrCommentInput } from '@devdigest/shared';
 import * as t from '../../db/schema.js';
@@ -129,6 +129,36 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       }
     }
 
+    // Summed cost of agent runs in the LATEST review cycle per PR. A "cycle"
+    // is one push: runs are tagged with the head_sha they were queued against,
+    // so we sum only runs whose head_sha matches the PR's current head. Old
+    // pre-migration runs have head_sha = null and are excluded (treated as
+    // "no data" → the UI renders "—" rather than $0.00).
+    const costByPr = new Map<string, number | null>();
+    if (prIds.length > 0) {
+      const costRows = await container.db
+        .select({
+          prId: t.agentRuns.prId,
+          headSha: t.agentRuns.headSha,
+          totalCost: sql<string | null>`sum(${t.agentRuns.costUsd})`,
+        })
+        .from(t.agentRuns)
+        .where(inArray(t.agentRuns.prId, prIds))
+        .groupBy(t.agentRuns.prId, t.agentRuns.headSha);
+      // headSha → prId → cost. Match against each PR's current head below.
+      const byPrHead = new Map<string, Map<string, number>>();
+      for (const row of costRows) {
+        if (row.prId == null || row.headSha == null || row.totalCost == null) continue;
+        const n = Number(row.totalCost);
+        if (!Number.isFinite(n)) continue;
+        if (!byPrHead.has(row.prId)) byPrHead.set(row.prId, new Map());
+        byPrHead.get(row.prId)!.set(row.headSha, n);
+      }
+      for (const pr of rows) {
+        costByPr.set(pr.id, byPrHead.get(pr.id)?.get(pr.headSha) ?? null);
+      }
+    }
+
     const now = Date.now();
     return rows.map((r) => {
       const review = latestReviewByPr.get(r.id);
@@ -153,6 +183,7 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
         opened_at: r.openedAt?.toISOString() ?? null,
         updated_at: r.updatedAt?.toISOString() ?? null,
         score: review ? review.score : null,
+        cost_usd_cycle: costByPr.get(r.id) ?? null,
       };
     });
   });

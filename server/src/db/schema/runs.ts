@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, integer, jsonb, timestamp } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, integer, jsonb, timestamp, doublePrecision } from 'drizzle-orm/pg-core';
 import { workspaces } from './core';
 import { agents } from './agents';
 import { pullRequests } from './pulls';
@@ -12,12 +12,19 @@ export const agentRuns = pgTable('agent_runs', {
     .references(() => workspaces.id, { onDelete: 'cascade' }),
   agentId: uuid('agent_id').references(() => agents.id, { onDelete: 'set null' }),
   prId: uuid('pr_id').references(() => pullRequests.id, { onDelete: 'set null' }),
+  /** PR head SHA at the moment this run was created — groups runs into "review
+   *  cycles" (one cycle per pushed commit). Used to scope cost/findings sums on
+   *  the PR list to the latest cycle. Null on legacy rows from before the
+   *  column existed. */
+  headSha: text('head_sha'),
   ranAt: timestamp('ran_at', { withTimezone: true }).defaultNow().notNull(),
   provider: text('provider'),
   model: text('model'),
   durationMs: integer('duration_ms'),
   tokensIn: integer('tokens_in'),
   tokensOut: integer('tokens_out'),
+  /** USD cost of the run; null when no usage was captured (e.g. provider 429 before token use). */
+  costUsd: doublePrecision('cost_usd'),
   status: text('status'),
   /** Failure reason when status='failed' (LLM/API error, timeout, quota, …). */
   error: text('error'),

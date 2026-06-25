@@ -2,7 +2,7 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { Badge, Icon, CircularScore, type IconName } from "@devdigest/ui";
+import { Badge, Icon, CircularScore, formatCost, type IconName } from "@devdigest/ui";
 import type { RunSummary, PrCommit } from "@devdigest/shared";
 
 /**
@@ -197,6 +197,13 @@ export function RunHistory({
             </div>
             <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2, fontSize: 11, color: "var(--text-muted)", flexShrink: 0 }}>
               {r.ran_at && <span>{new Date(r.ran_at).toLocaleTimeString()}</span>}
+              {(r.tokens_in != null || r.cost_usd != null) && (
+                <span className="mono">
+                  {r.tokens_in != null && `${r.tokens_in.toLocaleString()} tok`}
+                  {r.tokens_in != null && r.cost_usd != null && " · "}
+                  {r.cost_usd != null && formatCost(r.cost_usd)}
+                </span>
+              )}
             </div>
             <button
               type="button"
