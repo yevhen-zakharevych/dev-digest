@@ -71,6 +71,17 @@ export function FindingsTab({
     setTarget((p) => ({ runId, n: (p?.n ?? 0) + 1 }));
   }, []);
 
+  // Findings indexed by run_id so the timeline can show a per-run severity
+  // breakdown (the inline ⊘N ⚠N 💡N cluster) without an extra fetch — reviews
+  // are already loaded for the Review runs section.
+  const findingsByRunId = React.useMemo(() => {
+    const m = new Map<string, FindingRecord[]>();
+    for (const r of runs) {
+      if (r.run_id) m.set(r.run_id, r.findings);
+    }
+    return m;
+  }, [runs]);
+
   return (
     <section>
       {liveRunIds.length > 0 && (
@@ -131,6 +142,7 @@ export function FindingsTab({
           <RunHistory
             runs={prRuns ?? []}
             commits={prCommits}
+            findingsByRunId={findingsByRunId}
             onOpenTrace={handleOpenTrace}
             onGoToReview={handleGoToReview}
             onDelete={handleDelete}

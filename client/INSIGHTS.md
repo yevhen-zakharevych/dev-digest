@@ -22,7 +22,11 @@ _No entries yet._
 
 ## Tool & Library Notes
 
-_No entries yet._
+**`Severity` type is duplicated with different shapes — always import from `@devdigest/shared` for finding code.**
+- `client/src/vendor/shared/contracts/findings.ts:11` exports `Severity = "CRITICAL" | "WARNING" | "SUGGESTION"` (3 values; the runtime finding shape).
+- `client/src/vendor/ui/primitives/tokens.ts:3` exports a same-named `Severity = "CRITICAL" | "WARNING" | "SUGGESTION" | "INFO"` (4 values; UI tokens map for `SEV`/`SeverityBadge`).
+- Importing the UI variant when the value comes from `FindingRecord.severity` triggers TS2322 like `Type '"INFO"' is not assignable to ...` from the consuming side and the same error inverted on producer sides. The error message points at the wrong line.
+- Rule of thumb: code that reads/writes `FindingRecord` or builds `Record<Severity, …>` keyed by it must use `@devdigest/shared`'s `Severity`. UI presentation helpers that index `SEV[...]` can still use the UI type as long as they don't cross the boundary.
 
 ## Recurring Errors & Fixes
 

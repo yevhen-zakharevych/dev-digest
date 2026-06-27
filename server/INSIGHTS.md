@@ -18,7 +18,8 @@ _No entries yet._
 
 ## Codebase Patterns
 
-_No entries yet._
+**Pulls list response is a deliberate aggregation surface — extend it instead of adding per-PR endpoints.**
+`server/src/modules/pulls/routes.ts` (the `GET /repos/:id/pulls` handler around line 114) already runs two IN-queries after fetching the PR rows: one for latest-review score, one for cycle cost. When the UI needs more per-PR aggregate fields (e.g. severity_counts for the FINDINGS column added 2026-06-27), the established pattern is to add another `inArray(t.reviews.prId, prIds)` query, build a `Map<prId, …>`, and merge in the return mapper — **not** to fan out per-row from the client. The list is bounded; the extra round-trip is cheaper than N client-side fetches. Mirror any new field in `PrMeta` (`server/src/vendor/shared/contracts/platform.ts:157` AND the client copy at `client/src/vendor/shared/contracts/platform.ts:157` — they must stay in sync, see CLAUDE.md gotcha).
 
 ## Tool & Library Notes
 

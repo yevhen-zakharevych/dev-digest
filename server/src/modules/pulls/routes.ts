@@ -111,12 +111,16 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       }
     }
 
-    // Latest-review SCORE per PR for the list's score ring. Computed on read
-    // from reviews (no FK denorm); the list is small, so one IN-query + JS
-    // grouping is cheap. (The per-severity FINDINGS breakdown is intentionally
-    // not surfaced on the list — findings live on the PR detail page.)
+    // Latest-review SCORE per PR for the list's score ring, plus a
+    // per-severity FINDINGS breakdown for the FINDINGS column. Both come from
+    // reviews/findings (no FK denorm); the list is small, so a couple of
+    // IN-queries + JS grouping is cheap.
     const prIds = rows.map((r) => r.id);
     const latestReviewByPr = new Map<string, { score: number | null }>();
+    const severityCountsByPr = new Map<
+      string,
+      { CRITICAL: number; WARNING: number; SUGGESTION: number }
+    >();
     if (prIds.length > 0) {
       const reviewRows = await container.db
         .select({ prId: t.reviews.prId, score: t.reviews.score })
@@ -126,6 +130,39 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       // Rows are newest-first → first seen per PR is the latest review.
       for (const rv of reviewRows) {
         if (!latestReviewByPr.has(rv.prId)) latestReviewByPr.set(rv.prId, { score: rv.score });
+      }
+
+      // Non-dismissed findings grouped by (pr_id, severity). Joins findings
+      // through reviews so we can scope by prId in one query.
+      const findingRows = await container.db
+        .select({
+          prId: t.reviews.prId,
+          severity: t.findings.severity,
+          count: sql<string>`count(*)`,
+        })
+        .from(t.findings)
+        .innerJoin(t.reviews, eq(t.findings.reviewId, t.reviews.id))
+        .where(
+          and(
+            inArray(t.reviews.prId, prIds),
+            eq(t.reviews.kind, 'review'),
+            sql`${t.findings.dismissedAt} is null`,
+          ),
+        )
+        .groupBy(t.reviews.prId, t.findings.severity);
+      // Seed an empty bucket for every PR that has any review, so the UI can
+      // tell "reviewed but clean" from "never reviewed" (null).
+      for (const prId of latestReviewByPr.keys()) {
+        severityCountsByPr.set(prId, { CRITICAL: 0, WARNING: 0, SUGGESTION: 0 });
+      }
+      for (const row of findingRows) {
+        const bucket = severityCountsByPr.get(row.prId);
+        if (!bucket) continue;
+        const n = Number(row.count);
+        if (!Number.isFinite(n)) continue;
+        if (row.severity === 'CRITICAL' || row.severity === 'WARNING' || row.severity === 'SUGGESTION') {
+          bucket[row.severity] += n;
+        }
       }
     }
 
@@ -184,6 +221,7 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
         updated_at: r.updatedAt?.toISOString() ?? null,
         score: review ? review.score : null,
         cost_usd_cycle: costByPr.get(r.id) ?? null,
+        severity_counts: severityCountsByPr.get(r.id) ?? null,
       };
     });
   });

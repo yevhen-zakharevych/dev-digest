@@ -173,6 +173,15 @@ export const PrMeta = z.object({
   /** Summed USD cost of agent runs in the latest review cycle (list endpoint
    *  only). Null when no run in the current cycle reported usage. */
   cost_usd_cycle: z.number().nullish(),
+  /** Non-dismissed finding counts by severity across all reviews for this PR.
+   *  Null until at least one review exists; an empty {0,0,0} once reviewed. */
+  severity_counts: z
+    .object({
+      CRITICAL: z.number().int().nonnegative(),
+      WARNING: z.number().int().nonnegative(),
+      SUGGESTION: z.number().int().nonnegative(),
+    })
+    .nullish(),
 });
 export type PrMeta = z.infer<typeof PrMeta>;
 
