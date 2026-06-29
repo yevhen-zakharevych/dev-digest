@@ -48,6 +48,20 @@ If `pnpm db:generate` produces a migration you want to amend (e.g. you forgot a 
 
 Done correctly this is invisible to anyone who pulls; the dropped migration never existed.
 
+### 2026-06-29 — Skills CRUD + per-link toggle (L02)
+
+**`setSkills` is delete-then-insert, so it must read prior `agent_skills.enabled` into a map before deleting — otherwise drag-reorder silently re-enables disabled skills.**
+The Skills tab in the Agent Editor reorders via `POST /agents/:id/skills` with `skill_ids[]`. The repository implements that as `DELETE … WHERE agent_id` followed by a bulk `INSERT`. Reorder is supposed to be additive to the link's local state; if you don't preserve `enabled`, every reorder flips disabled skills back on. Fix lives at `server/src/modules/agents/repository.ts:230` — build `prevEnabled = new Map(existing.map(l => [l.skill.id, l.enabled]))` BEFORE the delete, then `enabled: prevEnabled.get(skillId) ?? true` in the insert values. Any future link-table that grows a per-link flag (e.g. weight, role) needs the same pattern in any "replace the set" operation.
+
+**Multipart upload routes can't use `withTypeProvider<ZodTypeProvider>()` for the body — `req.file()` is added by `@fastify/multipart`'s module augmentation and bypasses the type provider entirely.**
+`POST /skills/import` accepts a .md / .zip upload. The route is registered on the base `appBase`, NOT on `app = appBase.withTypeProvider<ZodTypeProvider>()`, and it uses `await req.file()` with no `schema.body`. If you put it on the ZodTypeProvider instance, `req.file` types out as not-on-the-request even though it works at runtime (the augmentation is global). Validation of the parsed preview happens at the NEXT step — `POST /skills/import/save` IS Zod-validated against `ImportPreviewBody`. Pattern: **multipart routes are validation-light at the boundary, the strict Zod schema enforces the shape one hop later when the preview is confirmed.** See `server/src/modules/skills/routes.ts:79` and the multipart plugin registration in `server/src/app.ts:96` (2MB / 1-file ceiling, the only multipart route in the app).
+
+**Skill body changes bump `version`; renames/description/enabled-toggle do NOT — `skill_versions` snapshots are body-only and the contract assumes that.**
+`server/src/modules/skills/repository.ts:79` only writes a `skillVersions` row when `patch.body !== undefined && patch.body !== existing.body`. The UI (`ConfigTab`) shows the version chip in the header and relies on this asymmetry — toggling `enabled` shouldn't pollute the snapshot table. If you later want renames to bump too, do it in this one place; don't add a second condition in the route.
+
+**Hand-written migration without `pnpm db:generate` — add the entry to `_journal.json` by hand too, or the migrator skips it.**
+Migration `0011_agent_skills_enabled.sql` was created without `db:generate` (single-column `ADD COLUMN`, schema edit was trivial). The migrator reads `meta/_journal.json`, not the directory listing, so the SQL file alone is invisible. Append `{ "idx": 11, "version": "7", "when": <ms>, "tag": "0011_agent_skills_enabled", "breakpoints": true }` to the entries array — `version: "7"` and `breakpoints: true` match what `db:generate` would emit. Skip a `meta/0011_snapshot.json` since the next `db:generate` will regenerate the latest snapshot from current schema; only an interim generate would notice the gap.
+
 ## Open Questions
 
 _No entries yet._
