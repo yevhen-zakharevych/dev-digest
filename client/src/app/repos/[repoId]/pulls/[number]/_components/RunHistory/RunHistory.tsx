@@ -2,8 +2,9 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { Badge, Icon, CircularScore, type IconName } from "@devdigest/ui";
-import type { RunSummary, PrCommit } from "@devdigest/shared";
+import { Badge, Icon, CircularScore, formatCost, type IconName } from "@devdigest/ui";
+import type { RunSummary, PrCommit, FindingRecord } from "@devdigest/shared";
+import { FindingsCounts } from "../../../_components/FindingsCounts";
 
 /**
  * PR timeline — every agent run interleaved with the PR's commits, newest-first
@@ -84,15 +85,33 @@ function tsOf(s: string | null | undefined): number {
   return Number.isNaN(n) ? 0 : n;
 }
 
+function countBySeverity(findings: FindingRecord[]): {
+  CRITICAL: number;
+  WARNING: number;
+  SUGGESTION: number;
+} {
+  const c = { CRITICAL: 0, WARNING: 0, SUGGESTION: 0 };
+  for (const f of findings) {
+    if (f.dismissed_at) continue;
+    if (f.severity === "CRITICAL" || f.severity === "WARNING" || f.severity === "SUGGESTION") {
+      c[f.severity] += 1;
+    }
+  }
+  return c;
+}
+
 export function RunHistory({
   runs,
   commits = [],
+  findingsByRunId,
   onOpenTrace,
   onGoToReview,
   onDelete,
 }: {
   runs: RunSummary[];
   commits?: PrCommit[];
+  /** Per-run findings, keyed by run_id — drives the per-severity counter chips. */
+  findingsByRunId?: Map<string, FindingRecord[]>;
   /** Open the trace + log drawer for a run (the logs icon). */
   onOpenTrace: (runId: string) => void;
   /** Jump to this run's inline review accordion below (clicking the agent name). */
@@ -188,15 +207,34 @@ export function RunHistory({
                   {r.error}
                 </div>
               )}
-              {settled && (
-                <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                  {t("runStatus.findings", { count: r.findings_count ?? 0 })}
-                  {(r.blockers ?? 0) > 0 ? t("runStatus.blockers", { count: r.blockers ?? 0 }) : ""}
-                </div>
-              )}
+              {settled && (() => {
+                const runFindings = findingsByRunId?.get(r.run_id) ?? null;
+                const counts = runFindings
+                  ? countBySeverity(runFindings)
+                  : null;
+                return (
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--text-muted)" }}>
+                    {counts && (counts.CRITICAL + counts.WARNING + counts.SUGGESTION) > 0 ? (
+                      <FindingsCounts counts={counts} findings={runFindings} />
+                    ) : (
+                      <span>{t("runStatus.findings", { count: r.findings_count ?? 0 })}</span>
+                    )}
+                    {(r.blockers ?? 0) > 0 && (
+                      <span>· {t("runStatus.blockers", { count: r.blockers ?? 0 }).replace(/^\s*·\s*/, "")}</span>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
             <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2, fontSize: 11, color: "var(--text-muted)", flexShrink: 0 }}>
               {r.ran_at && <span>{new Date(r.ran_at).toLocaleTimeString()}</span>}
+              {(r.tokens_in != null || r.cost_usd != null) && (
+                <span className="mono">
+                  {r.tokens_in != null && `${r.tokens_in.toLocaleString()} tok`}
+                  {r.tokens_in != null && r.cost_usd != null && " · "}
+                  {r.cost_usd != null && formatCost(r.cost_usd)}
+                </span>
+              )}
             </div>
             <button
               type="button"

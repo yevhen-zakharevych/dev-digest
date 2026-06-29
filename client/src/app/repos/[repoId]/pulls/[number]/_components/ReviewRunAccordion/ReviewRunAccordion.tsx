@@ -6,7 +6,8 @@
 "use client";
 
 import React from "react";
-import { Icon, Badge } from "@devdigest/ui";
+import { Icon, Badge, RunCostBadge } from "@devdigest/ui";
+import type { RunSummary } from "@devdigest/shared";
 import type { ReviewRecord, Verdict } from "@devdigest/shared";
 import { FindingsPanel } from "../FindingsPanel";
 import { VerdictBanner } from "../VerdictBanner";
@@ -25,6 +26,7 @@ function formatWhen(iso: string): string {
 
 export function ReviewRunAccordion({
   review,
+  run = null,
   prId,
   defaultOpen = false,
   repoFullName,
@@ -33,6 +35,8 @@ export function ReviewRunAccordion({
   targetNonce = 0,
 }: {
   review: ReviewRecord;
+  /** The agent run that produced this review — carries cost/tokens. */
+  run?: RunSummary | null;
   prId: string;
   defaultOpen?: boolean;
   repoFullName?: string | null;
@@ -102,6 +106,9 @@ export function ReviewRunAccordion({
           <Badge mono color="var(--text-secondary)">
             {review.score}
           </Badge>
+        )}
+        {run && run.cost_usd != null && (
+          <RunCostBadge value={run.cost_usd} />
         )}
         <span className="mono" style={{ fontSize: 12, color: "var(--text-muted)" }}>
           {formatWhen(review.created_at)}

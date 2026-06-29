@@ -123,6 +123,7 @@ export class ReviewService {
         prId,
         provider: agent.provider,
         model: agent.model,
+        headSha: pull.headSha,
       });
       runs.push({ run_id: runId, agent_id: agent.id, agent_name: agent.name });
       jobs.push({ agent, runId });
