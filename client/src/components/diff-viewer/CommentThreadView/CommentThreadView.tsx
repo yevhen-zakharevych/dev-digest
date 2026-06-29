@@ -6,8 +6,8 @@ import React from "react";
 import { useTranslations } from "next-intl";
 import { Button } from "@devdigest/ui";
 import { type CommentThread, type DiffCommentApi, cs } from "../comments";
-import { CommentCard } from "../CommentCard";
-import { InlineComposer } from "../InlineComposer";
+import { CommentCard } from "../CommentCard/CommentCard";
+import { InlineComposer } from "../InlineComposer/InlineComposer";
 
 export function CommentThreadView({
   thread,

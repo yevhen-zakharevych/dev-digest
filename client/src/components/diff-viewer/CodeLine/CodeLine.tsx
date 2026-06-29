@@ -6,8 +6,8 @@ import React from "react";
 import { commentTargetFor, type CommentThread, type DiffCommentApi, cs } from "../comments";
 import { type Line } from "../helpers";
 import { s, lineRowFor, lineSignFor } from "../styles";
-import { CommentThreadView } from "../CommentThreadView";
-import { InlineComposer } from "../InlineComposer";
+import { CommentThreadView } from "../CommentThreadView/CommentThreadView";
+import { InlineComposer } from "../InlineComposer/InlineComposer";
 
 export function CodeLine({
   ln,

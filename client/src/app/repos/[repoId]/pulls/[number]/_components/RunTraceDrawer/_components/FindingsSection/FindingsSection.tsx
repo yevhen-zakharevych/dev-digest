@@ -7,7 +7,7 @@ import { useTranslations } from "next-intl";
 import { Badge } from "@devdigest/ui";
 import type { FindingRecord } from "@devdigest/shared";
 import { s } from "../../styles";
-import { TraceSection } from "../TraceSection";
+import { TraceSection } from "../TraceSection/TraceSection";
 
 const SEV_COLOR: Record<string, string> = {
   CRITICAL: "var(--crit)",

@@ -1,4 +1,4 @@
-import type { FeatureModelDef } from "./types";
+import type { FeatureModelDef } from "../types";
 
 /**
  * Client-local copy of the per-feature model registry.

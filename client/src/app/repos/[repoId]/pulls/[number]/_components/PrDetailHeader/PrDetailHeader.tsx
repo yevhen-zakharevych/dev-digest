@@ -2,7 +2,7 @@
 
 import React, { useCallback } from "react";
 import { Icon, Avatar, Badge, Button, Tabs } from "@devdigest/ui";
-import { RunReviewDropdown } from "../RunReviewDropdown";
+import { RunReviewDropdown } from "../RunReviewDropdown/RunReviewDropdown";
 import { s } from "./styles";
 import type { PrDetail } from "@/lib/types";
 

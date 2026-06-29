@@ -9,8 +9,8 @@ import React from "react";
 import { Icon, Badge, RunCostBadge } from "@devdigest/ui";
 import type { RunSummary } from "@devdigest/shared";
 import type { ReviewRecord, Verdict } from "@devdigest/shared";
-import { FindingsPanel } from "../FindingsPanel";
-import { VerdictBanner } from "../VerdictBanner";
+import { FindingsPanel } from "../FindingsPanel/FindingsPanel";
+import { VerdictBanner } from "../VerdictBanner/VerdictBanner";
 import { useDeleteReview } from "../../../../../../../lib/hooks/reviews";
 
 const VERDICT_COLOR: Record<string, string> = {

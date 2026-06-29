@@ -11,15 +11,15 @@ import {
   ErrorState,
   AutoTriggerStatus,
 } from "@devdigest/ui";
-import { AppShell } from "@/components/app-shell";
-import { RepoNotFound } from "@/components/repo-not-found";
-import { usePulls, useRefreshRepo } from "@/lib/hooks";
+import { AppShell } from "@/components/app-shell/AppShell";
+import { RepoNotFound } from "@/components/RepoNotFound";
+import { usePulls, useRefreshRepo } from "@/lib/hooks/core";
 import { useActiveRepo, useRepoNotFound } from "@/lib/repo-context";
 import { ApiError } from "@/lib/api";
-import { COLUMN_KEYS, SKELETON_ROWS } from "./constants";
-import { s } from "./styles";
-import { PRRow } from "./_components/PRRow";
-import { FilterBar } from "./_components/FilterBar";
+import { COLUMN_KEYS, SKELETON_ROWS } from "./_lib/constants";
+import { s } from "./_lib/styles";
+import { PRRow } from "./_components/PRRow/PRRow";
+import { FilterBar } from "./_components/FilterBar/FilterBar";
 
 /** Open PRs carry a derived review status; everything else is merged/closed. */
 const OPEN_STATUSES = new Set(["needs_review", "reviewed", "stale"]);

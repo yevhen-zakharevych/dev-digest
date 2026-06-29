@@ -10,10 +10,10 @@ import { PROMPT_COLORS } from "../../constants";
 import { formatCost } from "@devdigest/ui";
 import { formatSeconds, formatTokens } from "../../helpers";
 import { s } from "../../styles";
-import { TraceSection } from "../TraceSection";
-import { ToolCallRow } from "../ToolCallRow";
-import { PromptBlock } from "../PromptBlock";
-import { FindingsSection } from "../FindingsSection";
+import { TraceSection } from "../TraceSection/TraceSection";
+import { ToolCallRow } from "../ToolCallRow/ToolCallRow";
+import { PromptBlock } from "../PromptBlock/PromptBlock";
+import { FindingsSection } from "../FindingsSection/FindingsSection";
 import { Row, Stat } from "../atoms";
 
 export function TraceBody({ trace, findings }: { trace: RunTrace; findings: FindingRecord[] }) {
