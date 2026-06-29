@@ -165,7 +165,7 @@ d('Conventions Extractor — end-to-end', () => {
       overrides: {
         git: new MockGitClient(),
         github: new MockGitHubClient(),
-        llm: { openai: llm },
+        llm: { openai: llm, openrouter: llm },
         repoIntel: makeRepoIntelStub(['src-api-users.ts', 'lib-redis.ts']),
       },
     });
