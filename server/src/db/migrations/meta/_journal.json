@@ -78,6 +78,13 @@
       "when": 1782415685805,
       "tag": "0010_peaceful_punisher",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1782700000000,
+      "tag": "0011_agent_skills_enabled",
+      "breakpoints": true
     }
   ]
 }

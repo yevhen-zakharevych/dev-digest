@@ -128,8 +128,23 @@ export const Skill = z.object({
   enabled: z.boolean(),
   version: z.number().int(),
   evidence_files: z.array(z.string()).nullish(),
+  /**
+   * Number of agents in this workspace that have this skill linked
+   * (regardless of per-link enabled). Counted via `agent_skills`; the card on
+   * /skills shows "{N} agents". Pull/accept rates are L06/L07 — null until then.
+   */
+  agents_count: z.number().int().default(0),
 });
 export type Skill = z.infer<typeof Skill>;
+
+/** A `skill_versions` snapshot. The body is recorded on every body-change. */
+export const SkillVersion = z.object({
+  skill_id: z.string(),
+  version: z.number().int(),
+  body: z.string(),
+  created_at: z.string(),
+});
+export type SkillVersion = z.infer<typeof SkillVersion>;
 
 export const CommunitySkill = z.object({
   name: z.string(),
@@ -189,5 +204,6 @@ export const AgentSkillLink = z.object({
   agent_id: z.string(),
   skill_id: z.string(),
   order: z.number().int(),
+  enabled: z.boolean().default(true),
 });
 export type AgentSkillLink = z.infer<typeof AgentSkillLink>;

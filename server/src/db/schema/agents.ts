@@ -58,6 +58,10 @@ export const agentSkills = pgTable(
       .notNull()
       .references(() => skills.id, { onDelete: 'cascade' }),
     order: integer('order').notNull().default(0),
+    // Per-agent toggle for a linked skill. The skill stays in the agent's set
+    // but is NOT included in the prompt block when false. Lets reviewers
+    // experiment with "with/without this skill" without unlinking + reordering.
+    enabled: boolean('enabled').notNull().default(true),
   },
   (t) => ({ pk: primaryKey({ columns: [t.agentId, t.skillId] }) }),
 );
