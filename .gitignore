@@ -23,3 +23,6 @@ test-results/
 
 # emdash worktree config (local)
 .emdash.json
+
+# pr-self-review gate sentinel (local state, not for sharing)
+.claude/.review-passed
