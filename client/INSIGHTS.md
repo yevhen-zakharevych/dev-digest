@@ -67,6 +67,12 @@ The skill body editor needed line numbers, monospace, "unsaved" indicator, and a
 **A linked-skills row uses HTML5 drag-and-drop directly because `react-dnd` would be overkill — the snippet is ~6 lines and is the recurring pattern for "lightweight reorder a small list" UIs.**
 `SkillsTab/SkillsTab.tsx` reorders the agent's linked skills with `draggable + onDragStart + onDragOver + onDrop`, passing the source index through `dataTransfer.setData("text/plain", String(i))`. On drop, splice the array and call `setSkills.mutate({skillIds: …})`. The mutation hits `POST /agents/:id/skills` with `{skill_ids}` which under the hood preserves per-link `enabled` (see server INSIGHTS 2026-06-29 entry on the agent-skills repo). Use this pattern for any small ordered list where the items are tall enough to grab; for >50 items consider `dnd-kit`.
 
+### 2026-06-29 — Conventions Extractor (L02)
+
+**`activeScanId` is ephemeral React state — lost on page reload while a scan is running.**
+`ConventionsListView` stores the current scan ID in `useState`, which evaporates on navigation or reload. After reload, `latestScan.data?.status === 'running'` remains true (the server knows the job is running), the spinner shows, but no SSE events flow because `useRunEvents` receives an empty array. Fix: add a `useEffect` that seeds `activeScanId` from `latestScan.data.scan_id` whenever the scan status is `'running'` and `activeScanId` is not yet set (`client/src/app/conventions/_components/ConventionsListView/ConventionsListView.tsx:52`). The same pattern applies to any page that drives SSE from a background job stored on the server.
+
+
 ## Open Questions
 
 _No entries yet._

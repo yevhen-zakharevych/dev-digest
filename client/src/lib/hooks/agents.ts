@@ -80,6 +80,17 @@ export function useDeleteAgent() {
   });
 }
 
+export function useLinkSkillToAgent() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ agentId, skillId }: { agentId: string; skillId: string }) =>
+      api.post(`/agents/${agentId}/skills`, { skill_id: skillId }),
+    onSuccess: (_d, { agentId }) => {
+      qc.invalidateQueries({ queryKey: ["agent", agentId] });
+    },
+  });
+}
+
 /** Dynamic model list for a provider (editor model picker). */
 export function useProviderModels(provider: Provider | null | undefined) {
   return useQuery({

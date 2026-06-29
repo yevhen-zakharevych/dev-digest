@@ -62,6 +62,11 @@ The Skills tab in the Agent Editor reorders via `POST /agents/:id/skills` with `
 **Hand-written migration without `pnpm db:generate` — add the entry to `_journal.json` by hand too, or the migrator skips it.**
 Migration `0011_agent_skills_enabled.sql` was created without `db:generate` (single-column `ADD COLUMN`, schema edit was trivial). The migrator reads `meta/_journal.json`, not the directory listing, so the SQL file alone is invisible. Append `{ "idx": 11, "version": "7", "when": <ms>, "tag": "0011_agent_skills_enabled", "breakpoints": true }` to the entries array — `version: "7"` and `breakpoints: true` match what `db:generate` would emit. Skip a `meta/0011_snapshot.json` since the next `db:generate` will regenerate the latest snapshot from current schema; only an interim generate would notice the gap.
 
+### 2026-06-29 — Conventions Extractor + API Contract Reviewer (L02)
+
+**`FEATURE_MODELS` default provider is the silent culprit when `OPENAI_API_KEY is not configured` for a specific feature.**
+`resolveFeatureModel` (`server/src/modules/settings/feature-models.ts:56`) falls back to `DEFAULTS[id]` when no workspace override exists. `DEFAULTS` is built from `FEATURE_MODELS` at module load (`platform.ts:43`). If the default provider for a feature is `'openai'` and the user only has `OPENROUTER_API_KEY`, the error is thrown at `container.ts:176` — deep inside the job handler, making the root cause non-obvious. The fix is `defaultProvider: 'openrouter'` in `FEATURE_MODELS` for the feature, mirrored in all three copies: `server/src/vendor/shared/contracts/platform.ts`, `client/src/vendor/shared/contracts/platform.ts`, `client/src/lib/constants/feature-models.constants.ts`. **Watch out:** if a workspace previously saved a DB override for that feature with `provider: 'openai'`, the override wins over the new default — it must be cleared through Settings UI or a direct DB update.
+
 ## Open Questions
 
 _No entries yet._

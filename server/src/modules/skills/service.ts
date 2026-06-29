@@ -43,6 +43,12 @@ export interface CreateSkillInput {
   type: SkillType;
   body: string;
   enabled?: boolean;
+  /**
+   * Optional list of repo-relative paths that informed the body. The Conventions
+   * Extractor sets this when merging accepted candidates into one skill; the
+   * manual create form leaves it undefined.
+   */
+  evidenceFiles?: string[];
 }
 
 export interface UpdateSkillInput {
@@ -112,6 +118,7 @@ export class SkillsService {
       source,
       body: input.body,
       enabled: input.enabled,
+      ...(input.evidenceFiles ? { evidenceFiles: input.evidenceFiles } : {}),
     });
     // Newly created → no agents linked yet → count is 0.
     return toSkillDto(row, 0);
