@@ -7,8 +7,9 @@ import {
   SECURITY_REVIEWER_PROMPT,
   PERFORMANCE_REVIEWER_PROMPT,
   TEST_QUALITY_REVIEWER_PROMPT,
+  API_CONTRACT_REVIEWER_PROMPT,
 } from './seed-prompts.js';
-import { TEST_QUALITY_SKILLS } from './seed-skills.js';
+import { TEST_QUALITY_SKILLS, API_CONTRACT_SKILLS } from './seed-skills.js';
 
 /** Default provider/model for the built-in reviewer agents. */
 const DEFAULT_PROVIDER = 'openrouter' as const;
@@ -225,6 +226,18 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
       version: 1,
       createdBy: userId,
     },
+    {
+      workspaceId,
+      name: 'API Contract Reviewer',
+      description:
+        'Detects breaking API changes: removed fields, schema drift, semver violations, and missing deprecation markers.',
+      provider: DEFAULT_PROVIDER,
+      model: DEFAULT_MODEL,
+      systemPrompt: API_CONTRACT_REVIEWER_PROMPT,
+      enabled: true,
+      version: 1,
+      createdBy: userId,
+    },
   ];
   for (const a of seedAgents) {
     const [existing] = await db
@@ -283,6 +296,55 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
       await db
         .insert(t.agentSkills)
         .values({ agentId: tqAgent.id, skillId: skillRow.id, order: i, enabled: true })
+        .onConflictDoNothing();
+    }
+  }
+
+  // ---- built-in skills (API Contract demo set) ----
+  for (let i = 0; i < API_CONTRACT_SKILLS.length; i++) {
+    const s = API_CONTRACT_SKILLS[i]!;
+    const [existing] = await db
+      .select()
+      .from(t.skills)
+      .where(and(eq(t.skills.workspaceId, workspaceId), eq(t.skills.name, s.name)));
+    if (!existing) {
+      const source = i === API_CONTRACT_SKILLS.length - 1 ? 'imported_url' : s.source;
+      await db.insert(t.skills).values({
+        workspaceId,
+        name: s.name,
+        description: s.description,
+        type: s.type,
+        source,
+        body: s.body,
+        enabled: true,
+        version: 1,
+      });
+    }
+  }
+
+  // ---- link the four skills to the API Contract Reviewer in order ----
+  const [acAgent] = await db
+    .select()
+    .from(t.agents)
+    .where(
+      and(
+        eq(t.agents.workspaceId, workspaceId),
+        eq(t.agents.name, 'API Contract Reviewer'),
+      ),
+    );
+  if (acAgent) {
+    for (let i = 0; i < API_CONTRACT_SKILLS.length; i++) {
+      const seed = API_CONTRACT_SKILLS[i]!;
+      const [skillRow] = await db
+        .select()
+        .from(t.skills)
+        .where(
+          and(eq(t.skills.workspaceId, workspaceId), eq(t.skills.name, seed.name)),
+        );
+      if (!skillRow) continue;
+      await db
+        .insert(t.agentSkills)
+        .values({ agentId: acAgent.id, skillId: skillRow.id, order: i, enabled: true })
         .onConflictDoNothing();
     }
   }
