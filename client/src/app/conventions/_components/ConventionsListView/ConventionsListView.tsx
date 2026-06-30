@@ -253,6 +253,8 @@ export function ConventionsListView() {
                 onReject={() => onReject(c.id)}
                 onSaveRule={(rule) => onSaveRule(c.id, rule)}
                 busy={updateOne.isPending}
+                repoFullName={activeRepo?.full_name}
+                defaultBranch={activeRepo?.default_branch}
               />
             ))}
           </div>

@@ -12,6 +12,14 @@ import { Button, IconBtn, ProgressBar } from "@devdigest/ui";
 import type { ConventionCandidate } from "@devdigest/shared";
 import { card, s } from "./styles";
 
+function toGithubBlobUrl(fullName: string, branch: string, evidencePath: string): string {
+  const colonIdx = evidencePath.lastIndexOf(":");
+  const filePath = colonIdx > 0 ? evidencePath.slice(0, colonIdx) : evidencePath;
+  const lineRange = colonIdx > 0 ? evidencePath.slice(colonIdx + 1) : "";
+  const anchor = lineRange ? "#L" + lineRange.replace("-", "-L") : "";
+  return `https://github.com/${fullName}/blob/${branch}/${filePath}${anchor}`;
+}
+
 interface ConventionCardProps {
   candidate: ConventionCandidate;
   selected: boolean;
@@ -20,6 +28,8 @@ interface ConventionCardProps {
   onReject: () => void;
   onSaveRule: (rule: string) => Promise<void> | void;
   busy?: boolean;
+  repoFullName?: string;
+  defaultBranch?: string;
 }
 
 export function ConventionCard({
@@ -30,6 +40,8 @@ export function ConventionCard({
   onReject,
   onSaveRule,
   busy,
+  repoFullName,
+  defaultBranch,
 }: ConventionCardProps) {
   const t = useTranslations("conventions");
   const [editing, setEditing] = React.useState(false);
@@ -40,6 +52,11 @@ export function ConventionCard({
   React.useEffect(() => {
     if (!editing) setDraft(candidate.rule);
   }, [candidate.rule, editing]);
+
+  const githubUrl =
+    repoFullName && defaultBranch
+      ? toGithubBlobUrl(repoFullName, defaultBranch, candidate.evidence_path)
+      : null;
 
   const status = candidate.status;
   const confidence = Math.round((candidate.confidence ?? 0) * 100);
@@ -123,7 +140,18 @@ export function ConventionCard({
 
         <div style={s.evidenceBox}>
           <div style={s.evidenceHeader}>
-            <span style={{ flex: 1 }}>{candidate.evidence_path}</span>
+            {githubUrl ? (
+              <a
+                href={githubUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ flex: 1, color: "var(--text-secondary)", textDecoration: "none" }}
+              >
+                {candidate.evidence_path}
+              </a>
+            ) : (
+              <span style={{ flex: 1 }}>{candidate.evidence_path}</span>
+            )}
             <IconBtn
               icon="Copy"
               size={22}
