@@ -137,6 +137,19 @@ export const Skill = z.object({
 });
 export type Skill = z.infer<typeof Skill>;
 
+export const RestoreSkillBody = z.object({ version: z.number().int().min(1) });
+export type RestoreSkillBody = z.infer<typeof RestoreSkillBody>;
+
+export const SkillDetailStats = z.object({
+  used_by: z.number().int(),
+  pull_frequency: z.number().nullable(),
+  accept_rate: z.number().nullable(),
+  findings_30d: z.number().int(),
+  agents: z.array(z.object({ id: z.string(), name: z.string() })),
+  findings_by_category: z.array(z.object({ label: z.string(), value: z.number().int() })),
+});
+export type SkillDetailStats = z.infer<typeof SkillDetailStats>;
+
 /** A `skill_versions` snapshot. The body is recorded on every body-change. */
 export const SkillVersion = z.object({
   skill_id: z.string(),
@@ -285,6 +298,7 @@ export const Agent = z.object({
   // Inject repo-intel context (repo skeleton + callers + rank note) into this
   // agent's review prompt. Default on; gated again by the global flag.
   repo_intel: z.boolean().default(true),
+  skills_count: z.number().int().default(0),
 });
 export type Agent = z.infer<typeof Agent>;
 

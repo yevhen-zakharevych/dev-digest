@@ -61,6 +61,7 @@
     "tabs": {
       "config": "Config",
       "preview": "Preview",
+      "stats": "Stats",
       "versions": "Versions"
     },
     "fields": {

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { Db } from '../../db/client.js';
 import * as t from '../../db/schema.js';
 import type { CiFailOn, Provider, ReviewStrategy } from '@devdigest/shared';
@@ -54,6 +54,22 @@ export class AgentsRepository {
 
   async list(workspaceId: string): Promise<AgentRow[]> {
     return this.db.select().from(t.agents).where(eq(t.agents.workspaceId, workspaceId));
+  }
+
+  async statsFor(agentIds: string[]): Promise<Map<string, { skillsCount: number }>> {
+    const m = new Map<string, { skillsCount: number }>();
+    if (agentIds.length === 0) return m;
+    const rows = await this.db
+      .select({
+        agentId: t.agentSkills.agentId,
+        skills: sql<number>`count(distinct ${t.agentSkills.skillId})::int`,
+      })
+      .from(t.agentSkills)
+      .where(inArray(t.agentSkills.agentId, agentIds))
+      .groupBy(t.agentSkills.agentId);
+    for (const r of rows) m.set(r.agentId, { skillsCount: r.skills });
+    for (const id of agentIds) if (!m.has(id)) m.set(id, { skillsCount: 0 });
+    return m;
   }
 
   async listEnabled(workspaceId: string): Promise<AgentRow[]> {

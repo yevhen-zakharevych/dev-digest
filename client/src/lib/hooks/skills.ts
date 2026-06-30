@@ -3,7 +3,7 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, API_BASE, ApiError } from "../api";
-import type { AgentSkillLink, Skill, SkillType, SkillVersion } from "@devdigest/shared";
+import type { AgentSkillLink, Skill, SkillDetailStats, SkillType, SkillVersion } from "@devdigest/shared";
 
 export function useSkills() {
   return useQuery({
@@ -25,6 +25,27 @@ export function useSkillVersions(id: string | null | undefined) {
     queryKey: ["skill-versions", id],
     queryFn: () => api.get<SkillVersion[]>(`/skills/${id}/versions`),
     enabled: !!id,
+  });
+}
+
+export function useSkillStats(id: string | null | undefined) {
+  return useQuery({
+    queryKey: ["skill-stats", id],
+    queryFn: () => api.get<SkillDetailStats>(`/skills/${id}/stats`),
+    enabled: !!id,
+  });
+}
+
+export function useRestoreSkill() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, version }: { id: string; version: number }) =>
+      api.post<Skill>(`/skills/${id}/restore`, { version }),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["skills"] });
+      qc.invalidateQueries({ queryKey: ["skill-versions", data.id] });
+      qc.setQueryData(["skill", data.id], data);
+    },
   });
 }
 

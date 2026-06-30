@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, sql, inArray } from 'drizzle-orm';
+import { and, asc, desc, eq, sql, inArray, gte } from 'drizzle-orm';
 import type { Db } from '../../db/client.js';
 import * as t from '../../db/schema.js';
 import type { SkillRow, SkillVersionRow } from '../../db/rows.js';
@@ -145,6 +145,75 @@ export class SkillsRepository {
     // Skills with zero linked agents won't appear in the join — fill them in.
     for (const id of skillIds) if (!m.has(id)) m.set(id, { agentsCount: 0 });
     return m;
+  }
+
+  async getVersion(skillId: string, version: number): Promise<SkillVersionRow | undefined> {
+    const [row] = await this.db
+      .select()
+      .from(t.skillVersions)
+      .where(and(eq(t.skillVersions.skillId, skillId), eq(t.skillVersions.version, version)));
+    return row;
+  }
+
+  async detailStatsFor(
+    workspaceId: string,
+    skillId: string,
+  ): Promise<{
+    agents: { id: string; name: string }[];
+    findingsTotal: number;
+    findingsAccepted: number;
+    findingsByCategory: { label: string; value: number }[];
+  }> {
+    // Agents linked to this skill
+    const agentRows = await this.db
+      .select({ id: t.agents.id, name: t.agents.name })
+      .from(t.agentSkills)
+      .innerJoin(t.agents, eq(t.agentSkills.agentId, t.agents.id))
+      .where(
+        and(eq(t.agentSkills.skillId, skillId), eq(t.agents.workspaceId, workspaceId)),
+      );
+
+    const agentIds = agentRows.map((a) => a.id);
+
+    if (agentIds.length === 0) {
+      return { agents: agentRows, findingsTotal: 0, findingsAccepted: 0, findingsByCategory: [] };
+    }
+
+    const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+    // Reviews by those agents in the last 30 days
+    const reviewIds = await this.db
+      .select({ id: t.reviews.id })
+      .from(t.reviews)
+      .where(
+        and(
+          inArray(t.reviews.agentId, agentIds),
+          gte(t.reviews.createdAt, since),
+        ),
+      );
+
+    if (reviewIds.length === 0) {
+      return { agents: agentRows, findingsTotal: 0, findingsAccepted: 0, findingsByCategory: [] };
+    }
+
+    const reviewIdList = reviewIds.map((r) => r.id);
+
+    // Findings aggregated by category
+    const categoryRows = await this.db
+      .select({
+        category: t.findings.category,
+        total: sql<number>`count(*)::int`,
+        accepted: sql<number>`count(${t.findings.acceptedAt})::int`,
+      })
+      .from(t.findings)
+      .where(inArray(t.findings.reviewId, reviewIdList))
+      .groupBy(t.findings.category);
+
+    const findingsTotal = categoryRows.reduce((s, r) => s + r.total, 0);
+    const findingsAccepted = categoryRows.reduce((s, r) => s + r.accepted, 0);
+    const findingsByCategory = categoryRows.map((r) => ({ label: r.category, value: r.total }));
+
+    return { agents: agentRows, findingsTotal, findingsAccepted, findingsByCategory };
   }
 
   private async snapshotVersion(row: SkillRow, version: number): Promise<void> {
