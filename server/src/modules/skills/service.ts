@@ -1,5 +1,5 @@
 import type { Container } from '../../platform/container.js';
-import type { Skill, SkillSource, SkillType, SkillVersion } from '@devdigest/shared';
+import type { Skill, SkillDetailStats, SkillSource, SkillType, SkillVersion } from '@devdigest/shared';
 import { SkillsRepository, type SkillRow } from './repository.js';
 import type { SkillVersionRow } from '../../db/rows.js';
 
@@ -143,6 +143,32 @@ export class SkillsService {
 
   async delete(workspaceId: string, id: string): Promise<boolean> {
     return this.repo.deleteById(workspaceId, id);
+  }
+
+  async restore(workspaceId: string, id: string, version: number): Promise<Skill | undefined> {
+    const snapshot = await this.repo.getVersion(id, version);
+    if (!snapshot) return undefined;
+    return this.update(workspaceId, id, { body: snapshot.body });
+  }
+
+  async getStats(workspaceId: string, id: string): Promise<SkillDetailStats | undefined> {
+    const skill = await this.repo.getById(workspaceId, id);
+    if (!skill) return undefined;
+
+    const { agents, findingsTotal, findingsAccepted, findingsByCategory } =
+      await this.repo.detailStatsFor(workspaceId, id);
+
+    const accept_rate =
+      findingsTotal > 0 ? Math.round((findingsAccepted / findingsTotal) * 100) / 100 : null;
+
+    return {
+      used_by: agents.length,
+      pull_frequency: null,
+      accept_rate,
+      findings_30d: findingsTotal,
+      agents,
+      findings_by_category: findingsByCategory,
+    };
   }
 
   // ---- Import ---------------------------------------------------------------

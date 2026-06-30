@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { SkillType } from '@devdigest/shared';
+import { RestoreSkillBody, SkillType } from '@devdigest/shared';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
 import { NotFoundError, BadRequestError } from '../../platform/errors.js';
@@ -108,6 +108,24 @@ export default async function skillsRoutes(appBase: FastifyInstance) {
       return service.previewMarkdown(filename, buf.toString('utf8'));
     }
     throw new BadRequestError('Only .md, .markdown or .zip files are supported');
+  });
+
+  app.post(
+    '/skills/:id/restore',
+    { schema: { params: IdParams, body: RestoreSkillBody } },
+    async (req) => {
+      const { workspaceId } = await getContext(app.container, req);
+      const skill = await service.restore(workspaceId, req.params.id, req.body.version);
+      if (!skill) throw new NotFoundError('Skill or version not found');
+      return skill;
+    },
+  );
+
+  app.get('/skills/:id/stats', { schema: { params: IdParams } }, async (req) => {
+    const { workspaceId } = await getContext(app.container, req);
+    const stats = await service.getStats(workspaceId, req.params.id);
+    if (!stats) throw new NotFoundError('Skill not found');
+    return stats;
   });
 
   app.post(
