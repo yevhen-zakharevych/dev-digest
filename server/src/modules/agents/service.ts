@@ -138,7 +138,29 @@ export class AgentsService {
   /** Linked skills for an agent as AgentSkillLink[] (ordered). */
   async skillLinks(agentId: string): Promise<AgentSkillLink[]> {
     const links = await this.repo.linkedSkills(agentId);
-    return links.map((l) => ({ agent_id: agentId, skill_id: l.skill.id, order: l.order }));
+    return links.map((l) => ({
+      agent_id: agentId,
+      skill_id: l.skill.id,
+      order: l.order,
+      enabled: l.enabled,
+    }));
+  }
+
+  /**
+   * Toggle the per-link enabled flag. Returns the updated ordered link set,
+   * or undefined when the agent or link doesn't exist (route maps that → 404).
+   */
+  async setLinkEnabled(
+    workspaceId: string,
+    agentId: string,
+    skillId: string,
+    enabled: boolean,
+  ): Promise<AgentSkillLink[] | undefined> {
+    const agent = await this.repo.getById(workspaceId, agentId);
+    if (!agent) return undefined;
+    const ok = await this.repo.setLinkEnabled(agentId, skillId, enabled);
+    if (!ok) return undefined;
+    return this.skillLinks(agentId);
   }
 
   /**

@@ -128,8 +128,23 @@ export const Skill = z.object({
   enabled: z.boolean(),
   version: z.number().int(),
   evidence_files: z.array(z.string()).nullish(),
+  /**
+   * Number of agents in this workspace that have this skill linked
+   * (regardless of per-link enabled). Counted via `agent_skills`; the card on
+   * /skills shows "{N} agents". Pull/accept rates are L06/L07 — null until then.
+   */
+  agents_count: z.number().int().default(0),
 });
 export type Skill = z.infer<typeof Skill>;
+
+/** A `skill_versions` snapshot. The body is recorded on every body-change. */
+export const SkillVersion = z.object({
+  skill_id: z.string(),
+  version: z.number().int(),
+  body: z.string(),
+  created_at: z.string(),
+});
+export type SkillVersion = z.infer<typeof SkillVersion>;
 
 export const CommunitySkill = z.object({
   name: z.string(),
@@ -141,15 +156,97 @@ export const CommunitySkill = z.object({
 export type CommunitySkill = z.infer<typeof CommunitySkill>;
 
 // ---- Conventions ----
+/**
+ * A candidate code-style rule extracted from a repository. Each row cites the
+ * file + line range it was inferred from (the "evidence"); the snippet is the
+ * literal slice from disk after server-side verification.
+ *
+ * Lifecycle: `pending` (just extracted) → `accepted` | `rejected`. Accepted
+ * rows feed `POST /repos/:repoId/conventions/create-skill`, which merges them
+ * into one Skill (source=`extracted`, type=`convention`).
+ */
+export const ConventionStatus = z.enum(['pending', 'accepted', 'rejected']);
+export type ConventionStatus = z.infer<typeof ConventionStatus>;
+
 export const ConventionCandidate = z.object({
   id: z.string(),
+  repo_id: z.string(),
+  scan_id: z.string().nullish(),
   rule: z.string(),
   evidence_path: z.string(),
   evidence_snippet: z.string(),
   confidence: z.number().min(0).max(1),
-  accepted: z.boolean(),
+  status: ConventionStatus,
+  created_at: z.string(),
 });
 export type ConventionCandidate = z.infer<typeof ConventionCandidate>;
+
+/** PATCH /conventions/:id body — status flip and/or rule edit. */
+export const UpdateConventionBody = z
+  .object({
+    status: ConventionStatus.optional(),
+    rule: z.string().min(1).max(160).optional(),
+  })
+  .refine((b) => b.status !== undefined || b.rule !== undefined, {
+    message: 'At least one of status or rule is required',
+  });
+export type UpdateConventionBody = z.infer<typeof UpdateConventionBody>;
+
+/**
+ * Latest scan summary for a repo. `scanId` doubles as the SSE runId — the UI
+ * subscribes to `/runs/${scanId}/events` to follow extraction progress.
+ */
+export const ConventionScanSummary = z.object({
+  scan_id: z.string().nullable(),
+  status: z.enum(['queued', 'running', 'done', 'failed']).nullable(),
+  started_at: z.string().nullable(),
+  finished_at: z.string().nullable(),
+  error: z.string().nullable(),
+});
+export type ConventionScanSummary = z.infer<typeof ConventionScanSummary>;
+
+/** Output schema the extraction model is forced to fill. */
+export const ConventionCategory = z.enum([
+  'naming',
+  'async',
+  'error-handling',
+  'return-types',
+  'module-boundaries',
+  'import-order',
+]);
+export type ConventionCategory = z.infer<typeof ConventionCategory>;
+
+export const ConventionCandidatesResponse = z.object({
+  candidates: z.array(
+    z.object({
+      category: ConventionCategory,
+      rule: z.string().min(1).max(160),
+      evidence_path: z.string().min(1),
+      evidence_line_start: z.number().int().min(1),
+      evidence_line_end: z.number().int().min(1),
+      confidence: z.number().min(0).max(1),
+    }),
+  ),
+});
+export type ConventionCandidatesResponse = z.infer<typeof ConventionCandidatesResponse>;
+
+/** POST /repos/:repoId/conventions/create-skill body. */
+export const CreateSkillFromConventionsBody = z.object({
+  candidate_ids: z.array(z.string()).min(1),
+  name: z.string().min(1),
+  description: z.string(),
+  body: z.string().min(1),
+  enabled: z.boolean().optional(),
+});
+export type CreateSkillFromConventionsBody = z.infer<typeof CreateSkillFromConventionsBody>;
+
+/** Server-computed seed for the "Create skill from conventions" modal. */
+export const ConventionSkillPreview = z.object({
+  name: z.string(),
+  description: z.string(),
+  body: z.string(),
+});
+export type ConventionSkillPreview = z.infer<typeof ConventionSkillPreview>;
 
 // ---- Agents ----
 export const Provider = z.enum(['openai', 'anthropic', 'openrouter']);
@@ -189,5 +286,6 @@ export const AgentSkillLink = z.object({
   agent_id: z.string(),
   skill_id: z.string(),
   order: z.number().int(),
+  enabled: z.boolean().default(true),
 });
 export type AgentSkillLink = z.infer<typeof AgentSkillLink>;

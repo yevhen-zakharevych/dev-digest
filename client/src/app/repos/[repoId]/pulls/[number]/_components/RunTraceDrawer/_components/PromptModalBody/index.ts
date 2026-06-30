@@ -1,1 +1,0 @@
-export { PromptModalBody } from "./PromptModalBody";

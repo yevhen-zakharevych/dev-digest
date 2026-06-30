@@ -14,7 +14,7 @@ import { useRunEvents } from "@/lib/hooks/reviews";
 import { DRAWER_WIDTH, LOG_HEIGHT, TABS } from "./constants";
 import { eventsToLog, traceLog } from "./helpers";
 import { s } from "./styles";
-import { TraceBody } from "./_components/TraceBody";
+import { TraceBody } from "./_components/TraceBody/TraceBody";
 
 export interface RunTraceDrawerProps {
   runId: string;
@@ -33,7 +33,7 @@ export interface RunTraceDrawerProps {
  * over SSE (useRunEvents). The Trace tab loads the persisted single-document
  * RunTrace (useRunTrace) once the run completes (or for historical runs).
  */
-export default function RunTraceDrawer({
+export function RunTraceDrawer({
   runId,
   agentName,
   prNumber,

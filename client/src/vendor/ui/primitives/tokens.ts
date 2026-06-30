@@ -1,10 +1,10 @@
 import { type IconName } from "../icons";
 
-export type Severity = "CRITICAL" | "WARNING" | "SUGGESTION" | "INFO";
+export type UISeverity = "CRITICAL" | "WARNING" | "SUGGESTION" | "INFO";
 export type Category = "bug" | "security" | "perf" | "style" | "test";
 
 export const SEV: Record<
-  Severity,
+  UISeverity,
   { c: string; bg: string; icon: IconName; label: string }
 > = {
   CRITICAL: { c: "var(--crit)", bg: "var(--crit-bg)", icon: "AlertOctagon", label: "Critical" },

@@ -8,9 +8,9 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { EmptyState, SETTINGS_SECTIONS } from "@devdigest/ui";
 import { useTranslations } from "next-intl";
-import { AppShell } from "../../../../../components/app-shell";
-import { SettingsApiKeys } from "./_components/SettingsApiKeys";
-import { SettingsModels } from "./_components/SettingsModels";
+import { AppShell } from "../../../../../components/app-shell/AppShell";
+import { SettingsApiKeys } from "./_components/SettingsApiKeys/SettingsApiKeys";
+import { SettingsModels } from "./_components/SettingsModels/SettingsModels";
 import { DEFAULT_SECTION, SECTION_API_KEYS, SECTION_MODELS } from "./constants";
 import { s } from "./styles";
 

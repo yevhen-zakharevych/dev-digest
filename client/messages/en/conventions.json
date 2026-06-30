@@ -5,22 +5,67 @@
     "headingPrefix": "Conventions in ",
     "repoFallback": "repo",
     "subtitle": "Scan the cloned repo to surface house-rules — each backed by evidence you can turn into a Skill.",
+    "subtitleWithLastScan": "Detected from sampled files · last scan {when}",
     "scanning": "Scanning…",
+    "scanningHint": "Sampling files, calling the model and verifying on disk…",
     "rescan": "Re-scan",
     "runExtraction": "Run extraction",
     "extractionFailed": "Extraction failed",
     "loadError": "Could not load conventions.",
+    "skillCreated": "Convention skill created and added to Skills Lab.",
+    "noRepoTitle": "No repository selected",
+    "noRepoBody": "Pick a repository from the sidebar to scan for conventions.",
     "empty": {
       "title": "No conventions extracted yet",
       "body": "Scan the repo to surface house-rules — naming, error handling, structure — each backed by evidence you can turn into a Skill.",
       "cta": "Run extraction"
     },
-    "candidateCount": "{count, plural, one {# candidate} other {# candidates}} · grounded against sampled files"
+    "candidateCount": "{count, plural, one {# candidate} other {# candidates}} · grounded against sampled files",
+    "acceptedCounter": "{accepted} of {total} accepted",
+    "deselectAll": "Deselect all",
+    "createSkill": "{count, plural, =0 {Create skill} one {Create skill (1)} other {Create skill (#)}}"
   },
   "card": {
     "confidence": "Confidence",
+    "accept": "Accept",
     "accepted": "Accepted",
     "accepting": "Accepting…",
-    "acceptAsSkill": "Accept as Skill"
+    "reject": "Reject",
+    "acceptAsSkill": "Accept as Skill",
+    "editRuleHint": "Click to edit the rule (⌘/Ctrl+Enter to save)",
+    "saveRule": "Save",
+    "cancelEdit": "Cancel",
+    "copyEvidence": "Copy evidence",
+    "selectAria": "Include this convention when creating the skill"
+  },
+  "modal": {
+    "title": "Create skill from conventions",
+    "subtitle": "Merged from {count, plural, one {# accepted convention} other {# accepted conventions}} into one Skill.",
+    "footerHint": "Saved as v1 · added to Skills Lab",
+    "cancel": "Cancel",
+    "create": "Create skill",
+    "tokens": "{count} tokens",
+    "bodyLoading": "Loading preview…",
+    "typeConvention": "Convention",
+    "typeLockedHint": "Locked — extracted conventions land as `convention` skills.",
+    "link": {
+      "title": "Skill created — link to agent?",
+      "subtitle": "Attach the new skill to a reviewer agent so it applies during reviews.",
+      "agentLabel": "Agent",
+      "agentPlaceholder": "— select agent —",
+      "link": "Link & close",
+      "skip": "Skip"
+    },
+    "fields": {
+      "name": "Name",
+      "namePlaceholder": "e.g. payments-api-conventions",
+      "description": "Description",
+      "descriptionPlaceholder": "Short summary shown on the Skills card",
+      "type": "Type",
+      "enabled": "Enabled",
+      "body": "Skill body",
+      "bodyHint": "Markdown — added to agents' prompts as-is. Edit freely before saving.",
+      "bodyPlaceholder": "# House conventions\n\nApply when reviewing this repo…"
+    }
   }
 }

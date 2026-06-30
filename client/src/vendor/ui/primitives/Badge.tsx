@@ -1,6 +1,6 @@
 import React from "react";
 import { Icon, type IconName } from "../icons";
-import { SEV, CAT, type Severity, type Category } from "./tokens";
+import { SEV, CAT, type UISeverity, type Category } from "./tokens";
 
 export function Badge({
   children,
@@ -54,7 +54,7 @@ export function SeverityBadge({
   count,
   compact,
 }: {
-  severity: Severity;
+  severity: UISeverity;
   count?: number;
   compact?: boolean;
 }) {

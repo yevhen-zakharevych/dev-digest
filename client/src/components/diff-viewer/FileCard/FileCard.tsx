@@ -16,8 +16,8 @@ import {
   type DiffCommentApi,
 } from "../comments";
 import { s, chevronFor } from "../styles";
-import { CodeLine } from "../CodeLine";
-import { OutdatedComments } from "../OutdatedComments";
+import { CodeLine } from "../CodeLine/CodeLine";
+import { OutdatedComments } from "../OutdatedComments/OutdatedComments";
 
 /** Threads anchored to a given parsed line (RIGHT=new, LEFT=old). */
 function threadsForLine(ln: Line, matched: Map<string, CommentThread[]>): CommentThread[] {

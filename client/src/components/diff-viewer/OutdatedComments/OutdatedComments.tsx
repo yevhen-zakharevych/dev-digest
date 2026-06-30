@@ -5,7 +5,7 @@
 import React from "react";
 import { useTranslations } from "next-intl";
 import { type CommentThread, cs } from "../comments";
-import { CommentCard } from "../CommentCard";
+import { CommentCard } from "../CommentCard/CommentCard";
 
 export function OutdatedComments({ threads }: { threads: CommentThread[] }) {
   const t = useTranslations("shell");

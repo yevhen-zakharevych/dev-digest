@@ -16,6 +16,16 @@ const VersionParams = z.object({
   version: z.coerce.number().int().positive(),
 });
 
+/** `/agents/:id/skills/:skillId` — both uuids. */
+const SkillLinkParams = z.object({
+  id: z.string().uuid(),
+  skillId: z.string().uuid(),
+});
+
+const UpdateSkillLinkBody = z.object({
+  enabled: z.boolean(),
+});
+
 /**
  * A2 — agents module (owner A2).
  *   GET    /agents                  → list (workspace-scoped)
@@ -161,6 +171,39 @@ export default async function agentsRoutes(appBase: FastifyInstance) {
           : await service.linkSkill(workspaceId, req.params.id, body.skill_id!, body.order);
       if (!links) throw new NotFoundError('Agent not found');
       return links;
+    },
+  );
+
+  app.put(
+    '/agents/:id/skills/:skillId',
+    { schema: { params: SkillLinkParams, body: UpdateSkillLinkBody } },
+    async (req) => {
+      const { workspaceId } = await getContext(app.container, req);
+      const links = await service.setLinkEnabled(
+        workspaceId,
+        req.params.id,
+        req.params.skillId,
+        req.body.enabled,
+      );
+      if (!links) throw new NotFoundError('Agent or skill link not found');
+      return links;
+    },
+  );
+
+  app.delete(
+    '/agents/:id/skills/:skillId',
+    { schema: { params: SkillLinkParams } },
+    async (req) => {
+      const { workspaceId } = await getContext(app.container, req);
+      const agent = await service.get(workspaceId, req.params.id);
+      if (!agent) throw new NotFoundError('Agent not found');
+      // Reuse setSkills by computing the new ordered list without this skill.
+      const current = await service.skillLinks(req.params.id);
+      const next = current
+        .filter((l) => l.skill_id !== req.params.skillId)
+        .map((l) => l.skill_id);
+      await service.setSkills(workspaceId, req.params.id, next);
+      return service.skillLinks(req.params.id);
     },
   );
 

@@ -4,7 +4,7 @@ import React from "react";
 import { useTranslations } from "next-intl";
 import { Badge, Icon, CircularScore, formatCost, type IconName } from "@devdigest/ui";
 import type { RunSummary, PrCommit, FindingRecord } from "@devdigest/shared";
-import { FindingsCounts } from "../../../_components/FindingsCounts";
+import { FindingsCounts } from "../../../_components/FindingsCounts/FindingsCounts";
 
 /**
  * PR timeline — every agent run interleaved with the PR's commits, newest-first

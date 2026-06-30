@@ -6,10 +6,10 @@ import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Icon, Avatar, Badge, CircularScore, RunCostBadge } from "@devdigest/ui";
 import type { PrMeta } from "@/lib/types";
-import { SIZE_COLOR, STATUS_META } from "../../constants";
-import { relativeTime, sizeOf } from "../../helpers";
-import { s } from "../../styles";
-import { FindingsCounts } from "../FindingsCounts";
+import { SIZE_COLOR, STATUS_META } from "../../_lib/constants";
+import { relativeTime, sizeOf } from "../../_lib/helpers";
+import { s } from "../../_lib/styles";
+import { FindingsCounts } from "../FindingsCounts/FindingsCounts";
 import { usePrReviews } from "../../../../../../lib/hooks/reviews";
 
 export function PRRow({ pr, repoId }: { pr: PrMeta; repoId: string }) {

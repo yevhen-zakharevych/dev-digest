@@ -14,7 +14,7 @@ import {
   ConfidenceNum,
   Button,
   Markdown,
-  type Severity,
+  type UISeverity,
   type Category,
 } from "@devdigest/ui";
 import type { FindingRecord, FindingActionKind } from "@devdigest/shared";
@@ -55,7 +55,7 @@ export function FindingCard({
     <div data-finding-id={f.id} style={s.card(!!focused, sevColor, muted)}>
       <div onClick={() => setExpanded((e) => !e)} style={s.header}>
         <div style={s.badgeWrap}>
-          <SeverityBadge severity={f.severity as Severity} compact />
+          <SeverityBadge severity={f.severity as UISeverity} compact />
         </div>
         <div style={s.headerMain}>
           <div style={s.titleRow}>

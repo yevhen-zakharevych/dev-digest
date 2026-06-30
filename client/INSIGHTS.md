@@ -53,6 +53,26 @@ That "two different types" wording sounds like a duplicate-vendoring problem (an
 ```
 See `FindingsTab/FindingsTab.tsx:158` and `ReviewRunAccordion/ReviewRunAccordion.tsx:30`. The leaf stays render-only; no new hook, no duplicate fetch. Same pattern applies whenever a denormalized run-level field needs to appear on a review-level UI.
 
+### 2026-06-29 — Skills page + custom body editor (L02)
+
+**`Modal` renders children at zero padding — every modal body must own its `padding`. Easy to miss because the title + footer ARE padded.**
+`client/src/vendor/ui/kit/Modal.tsx:60` is literally `<div style={{flex:1, overflow:auto}}>{children}</div>`. The title bar (`padding:"18px 24px"`) and footer (`padding:"16px 24px"`) have padding, which makes a fresh modal look fine UNTIL you put a form inside and the inputs visually touch the left/right edges. Convention: wrap the form in `<div style={{padding:"20px 24px 24px", display:"flex", flexDirection:"column", gap:16}}>` (see `CreateSkillModal/CreateSkillModal.tsx:67` and `ImportSkillModal/ImportSkillModal.tsx`). Do NOT add the padding inside the Modal kit — other call sites (e.g. confirm dialogs) want zero-padded children.
+
+**Custom textarea with a line-number gutter is ~70 lines and zero deps — reach for it before pulling in CodeMirror/Monaco for read/edit-with-numbers UX.**
+The skill body editor needed line numbers, monospace, "unsaved" indicator, and a token counter. CodeMirror is ~150KB minified, Monaco ~3MB. The component at `client/src/app/skills/_components/SkillEditor/_components/ConfigTab/BodyEditor.tsx` is a sibling `<div>` gutter + `<textarea>`, kept in sync by `onScroll → gutterRef.scrollTop = taRef.scrollTop`. Both share `font-family: var(--font-mono)`, `font-size: 13`, `line-height: 20`. The textarea owns the scrollbar; the gutter sets `overflow: hidden` and is positioned manually. Use this pattern when you need "rendered like code" but **don't** need syntax highlighting, autocomplete, or multi-cursor. Cheap token approximation lives in the same file: `approxTokens(text) = max(1, round(len/4))` — good enough for a live UI counter; real tiktoken stays server-side.
+
+**A subtitle on the left rail of a side-by-side list breaks when the column is narrow — drop it before adding `white-space: nowrap` workarounds.**
+`SkillsListView` originally had a header row with `<title>+<subtitle>` block beside the search input and Add button. At `width: 380px` the title block collapsed below ~80px, which made the subtitle word-wrap one character per line (each character on its own line — the entire text rendered vertically). Fix at `SkillsListView/styles.ts` was to drop the subtitle and lay header as `[h1 | Add]` row + `[search]` row below. The new design has no subtitle either — confirms the simpler IA. Lesson: when the list rail is narrow (<420px) and contains a search/cta, kill the subtitle instead of forcing flex shrink.
+
+**A linked-skills row uses HTML5 drag-and-drop directly because `react-dnd` would be overkill — the snippet is ~6 lines and is the recurring pattern for "lightweight reorder a small list" UIs.**
+`SkillsTab/SkillsTab.tsx` reorders the agent's linked skills with `draggable + onDragStart + onDragOver + onDrop`, passing the source index through `dataTransfer.setData("text/plain", String(i))`. On drop, splice the array and call `setSkills.mutate({skillIds: …})`. The mutation hits `POST /agents/:id/skills` with `{skill_ids}` which under the hood preserves per-link `enabled` (see server INSIGHTS 2026-06-29 entry on the agent-skills repo). Use this pattern for any small ordered list where the items are tall enough to grab; for >50 items consider `dnd-kit`.
+
+### 2026-06-29 — Conventions Extractor (L02)
+
+**`activeScanId` is ephemeral React state — lost on page reload while a scan is running.**
+`ConventionsListView` stores the current scan ID in `useState`, which evaporates on navigation or reload. After reload, `latestScan.data?.status === 'running'` remains true (the server knows the job is running), the spinner shows, but no SSE events flow because `useRunEvents` receives an empty array. Fix: add a `useEffect` that seeds `activeScanId` from `latestScan.data.scan_id` whenever the scan status is `'running'` and `activeScanId` is not yet set (`client/src/app/conventions/_components/ConventionsListView/ConventionsListView.tsx:52`). The same pattern applies to any page that drives SSE from a background job stored on the server.
+
+
 ## Open Questions
 
 _No entries yet._

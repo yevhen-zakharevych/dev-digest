@@ -6,7 +6,9 @@ import {
   GENERAL_REVIEWER_PROMPT,
   SECURITY_REVIEWER_PROMPT,
   PERFORMANCE_REVIEWER_PROMPT,
+  TEST_QUALITY_REVIEWER_PROMPT,
 } from './seed-prompts.js';
+import { TEST_QUALITY_SKILLS } from './seed-skills.js';
 
 /** Default provider/model for the built-in reviewer agents. */
 const DEFAULT_PROVIDER = 'openrouter' as const;
@@ -211,6 +213,18 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
       version: 1,
       createdBy: userId,
     },
+    {
+      workspaceId,
+      name: 'Test Quality Reviewer',
+      description:
+        'Reviews tests: uncovered branches, missing corner cases, over-mocking, flake risk.',
+      provider: DEFAULT_PROVIDER,
+      model: DEFAULT_MODEL,
+      systemPrompt: TEST_QUALITY_REVIEWER_PROMPT,
+      enabled: true,
+      version: 1,
+      createdBy: userId,
+    },
   ];
   for (const a of seedAgents) {
     const [existing] = await db
@@ -218,6 +232,59 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
       .from(t.agents)
       .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.name, a.name)));
     if (!existing) await db.insert(t.agents).values(a);
+  }
+
+  // ---- built-in skills (Test Quality demo set) ----
+  // Idempotent: upsert by (workspace_id, name). The fourth skill is sourced as
+  // 'imported_url' so a fresh workspace can demo the import preview path's
+  // end state even before the user runs the import flow themselves.
+  for (let i = 0; i < TEST_QUALITY_SKILLS.length; i++) {
+    const s = TEST_QUALITY_SKILLS[i]!;
+    const [existing] = await db
+      .select()
+      .from(t.skills)
+      .where(and(eq(t.skills.workspaceId, workspaceId), eq(t.skills.name, s.name)));
+    if (!existing) {
+      // The last skill is the one we pretend was imported, to mirror the L02 walkthrough.
+      const source = i === TEST_QUALITY_SKILLS.length - 1 ? 'imported_url' : s.source;
+      await db.insert(t.skills).values({
+        workspaceId,
+        name: s.name,
+        description: s.description,
+        type: s.type,
+        source,
+        body: s.body,
+        enabled: true,
+        version: 1,
+      });
+    }
+  }
+
+  // ---- link the four skills to the Test Quality Reviewer in order ----
+  const [tqAgent] = await db
+    .select()
+    .from(t.agents)
+    .where(
+      and(
+        eq(t.agents.workspaceId, workspaceId),
+        eq(t.agents.name, 'Test Quality Reviewer'),
+      ),
+    );
+  if (tqAgent) {
+    for (let i = 0; i < TEST_QUALITY_SKILLS.length; i++) {
+      const seed = TEST_QUALITY_SKILLS[i]!;
+      const [skillRow] = await db
+        .select()
+        .from(t.skills)
+        .where(
+          and(eq(t.skills.workspaceId, workspaceId), eq(t.skills.name, seed.name)),
+        );
+      if (!skillRow) continue;
+      await db
+        .insert(t.agentSkills)
+        .values({ agentId: tqAgent.id, skillId: skillRow.id, order: i, enabled: true })
+        .onConflictDoNothing();
+    }
   }
 
   return { workspaceId, userId };

@@ -2,7 +2,7 @@
    _components/AddRepoView. */
 "use client";
 
-import { AddRepoView } from "./_components/AddRepoView";
+import { AddRepoView } from "./_components/AddRepoView/AddRepoView";
 
 export default function AddRepoPage() {
   return <AddRepoView />;

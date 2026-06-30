@@ -1,1 +1,0 @@
-export { SettingsModels } from "./SettingsModels";
