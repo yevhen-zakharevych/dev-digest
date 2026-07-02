@@ -11,6 +11,10 @@ Shared with the team via version control.
 | [planner](planner.md) | Opus | read-only (`permissionMode: plan`) | Produces a structured **Development Plan** before any code is written; decomposes work into parallelizable tasks and names the skills each task must apply. |
 | [implementer](implementer.md) | Sonnet | write (`Read/Edit/Write/Bash/Grep/Glob/Skill`) | Implements **one scoped task** from a plan (UI or backend), applies the module skills, keeps existing tests green, self-reviews only the code it wrote. |
 | [researcher](researcher.md) | Sonnet | read-only | Finds information in the codebase or on the web and returns a structured, scannable report. |
+| [test-writer](test-writer.md) | Sonnet | write (`Read/Edit/Write/Bash/Grep/Glob/Skill`) | Writes automated tests for UI (Vitest + RTL) or backend (Vitest unit + `*.it.test.ts` testcontainers). Applies the testing skills; runs the suite to green then mutation-checks; never weakens an assertion to pass. |
+| [architecture-reviewer](architecture-reviewer.md) | Opus | read-only (`permissionMode: plan`) | Reviews a diff for **architectural** quality (layering, dependency direction, module boundaries, misplaced business logic) — not line bugs or style. Returns a findings report; empty is a valid result. |
+| [plan-verifier](plan-verifier.md) | Opus | read-only (`permissionMode: plan`) | Given a plan **and** the code written, verifies every requirement is actually implemented — one row per requirement, `file:line` evidence for each MET, four statuses (MET/PARTIAL/MISSING/CANNOT VERIFY). Coverage, not code quality. |
+| [doc-writer](doc-writer.md) | Sonnet | write (`Read/Edit/Write/Bash/Grep/Glob/Skill`) | Documents shipped functionality, turns plans into docs, converts material into docs with Mermaid diagrams. Classifies by Diátaxis, knows where docs live in the repo, grounds every claim in `file:line`. |
 
 ## How the two planning agents work together
 
@@ -31,7 +35,7 @@ request → planner (Opus, read-only) → Development Plan
 
 ## Skill wiring (hybrid)
 
-Both new agents use the repo's `.claude/skills/`, loaded two different ways:
+The agents use the repo's `.claude/skills/`, loaded two different ways:
 
 - **planner** — *preloads* only the two architecture skills (`onion-architecture`,
   `frontend-architecture`) via the `skills:` frontmatter field, so it plans
@@ -43,6 +47,21 @@ Both new agents use the repo's `.claude/skills/`, loaded two different ways:
   `drizzle-orm-patterns`, `postgresql-table-design`, `zod`) or the full UI set
   (`frontend-architecture`, `next-best-practices`, `react-best-practices`,
   `react-testing-library`), plus cross-cutting (`typescript-expert`, `security`).
+- **test-writer** — invokes skills *dynamically* via the `Skill` tool (works on
+  both sides, so nothing preloaded): `react-testing-library` + the UI set for
+  `client/**`, the backend set for `server/**` & `reviewer-core/**`, always
+  `typescript-expert` (and `security` for input/auth tests).
+- **architecture-reviewer** — *hybrid*: *preloads* `onion-architecture` +
+  `frontend-architecture` via `skills:` (same rationale as planner: it reviews
+  against the real layering rules), AND keeps the `Skill` tool to *invoke* any
+  other skill on demand when a diff needs it (`zod`, `security`, the backend/UI
+  sets). `permissionMode: plan` keeps it read-only regardless — invoking a
+  skill only loads instructions, it writes nothing.
+- **doc-writer** — invokes `mermaid-diagram` *dynamically* via the `Skill` tool
+  when a diagram earns its place; no preload.
+- **plan-verifier** — *neither* preloads nor carries the `Skill` tool. Its lens is
+  requirement coverage, not architecture, so it stays lean and only *names*
+  principles (`onion-architecture`, `zod`, `security`, …) when judging correctness.
 
 Rule of thumb: to load a skill's *body* at startup use `skills:`; to let an agent
 *invoke* skills on demand keep `Skill` in its `tools:`. See root `INSIGHTS.md`
@@ -77,6 +96,43 @@ vetted practitioner patterns (researched 2026). Key practices applied:
 Repo-specific decisions layered on top: Implementer on **Sonnet**; **no worktree
 isolation** (shared branch, disjoint file ownership); Planner **preloads only the
 two architecture skills**; Implementer self-review is **code-writing only**.
+
+The four later agents (`test-writer`, `architecture-reviewer`, `plan-verifier`,
+`doc-writer`) were designed the same way — from the repo's own conventions plus
+researched practice (researched 2026):
+
+- **test-writer** — the repo's testing philosophy ("typological, not exhaustive";
+  the `*.it.test.ts` CI split) — `TESTING.md`; the testcontainers pattern —
+  `server/test/helpers/pg.ts`; RTL house style — `AgentCard.test.tsx`; and the
+  AI-test-author failure mode ("self-verification loop", green/red-zone,
+  run-green-then-mutate-to-red) — [Autonoma: when to trust Claude writing tests](https://getautonoma.com/blog/claude-writing-tests-when-to-trust),
+  [Kent C. Dodds: common RTL mistakes](https://kentcdodds.com/blog/common-mistakes-with-react-testing-library),
+  [Testing Library query priority](https://testing-library.com/docs/queries/about/),
+  [Fastify testing guide](https://fastify.dev/docs/v5.2.x/Guides/Testing/),
+  [Testcontainers best practices](https://www.docker.com/blog/testcontainers-best-practices/),
+  [AAA pattern](https://automationpanda.com/2020/07/07/arrange-act-assert-a-pattern-for-writing-good-tests/),
+  [Kent Beck: Programmer Test Principles](https://medium.com/@kentbeck_7670/programmer-test-principles-d01c064d7934).
+- **architecture-reviewer** — mirrors the repo's proven review skeleton
+  (`docs/agent-prompts/general-reviewer.md`); Dependency Rule / Ports-&-Adapters —
+  [Uncle Bob: The Clean Architecture](https://blog.cleancoder.com/uncle-bob/2012/08/13/the-clean-architecture.html),
+  [ploeh: Layers, Onions, Ports, Adapters](https://blog.ploeh.dk/2013/12/03/layers-onions-ports-adapters-its-all-the-same/),
+  [Hexagonal architecture (Wikipedia)](https://en.wikipedia.org/wiki/Hexagonal_architecture_(software));
+  earn-trust / anti-nitpick / false-positive discipline —
+  [Augment Code: high-quality AI code review](https://www.augmentcode.com/blog/how-we-built-high-quality-ai-code-review-agent),
+  [Graphite: AI review false positives](https://graphite.com/guides/ai-code-review-false-positives).
+- **plan-verifier** — Requirements Traceability Matrix —
+  [Perforce: how to create a traceability matrix](https://www.perforce.com/blog/alm/how-create-traceability-matrix);
+  partial credit + verify actual state over self-report —
+  [Anthropic: demystifying evals for AI agents](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents);
+  Acceptance Criteria vs Definition of Done —
+  [Nulab](https://nulab.com/learn/software-development/definition-of-done-vs-acceptance-criteria/);
+  gap analysis — [Qodo](https://www.qodo.ai/blog/gap-analysis-in-software-testing/).
+- **doc-writer** — Diátaxis mode classification —
+  [diataxis.fr](https://diataxis.fr/); ADR placement/format —
+  [Fowler: Architecture Decision Record](https://martinfowler.com/bliki/ArchitectureDecisionRecord.html);
+  code-grounded, hallucination-resistant doc generation —
+  [DocAgent (arXiv:2504.08725)](https://arxiv.org/abs/2504.08725); Mermaid C4
+  caveat — [Mermaid C4 syntax (experimental)](https://mermaid.js.org/syntax/c4.html).
 
 ## Creating a new agent
 

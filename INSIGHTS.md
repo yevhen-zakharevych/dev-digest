@@ -39,6 +39,14 @@ _No entries yet._
 
 Future cleanup question: can these two trees be replaced with a single source via path alias (the way `reviewer-core` is consumed)? Currently they aren't — it's a deliberate vendoring per the root `CLAUDE.md` ("NOT a workspace. Each package owns its `package.json` + lockfile").
 
+### 2026-07-02 — Four new subagents (test-writer, architecture-reviewer, plan-verifier, doc-writer)
+
+**Adding several `.claude/agents/*.md` files in parallel: give each implementer ONE file, and put the shared `README.md` catalog update in a separate task that depends on all of them.** The four agent files are fully disjoint (one file each) so four implementers ran in parallel with no collision (per the file-ownership rule at `INSIGHTS.md:27`); the single coordination hazard is `.claude/agents/README.md` (catalog table + "Skill wiring" + "What these agents are based on"), which every task would otherwise touch — treat it like the shared-contract hazard and do it last, alone. Creating the file is enough for the harness to auto-register the agent (a "New agent types are now available" notification fires mid-session; no restart needed).
+
+**Read-only vs write subagents split cleanly on frontmatter and this is worth validating mechanically.** Read-only reviewers (`architecture-reviewer.md`, `plan-verifier.md`) = `tools: Read, Grep, Glob, Bash` + `permissionMode: plan`, NO Edit/Write/Skill. Write agents (`test-writer.md`, `doc-writer.md`) = `Read, Edit, Write, Bash, Grep, Glob, Skill`, NO `permissionMode`. Skill wiring follows `INSIGHTS.md:25`: `architecture-reviewer` *preloads* the two architecture skills via `skills:` (like planner); `test-writer`/`doc-writer` invoke skills dynamically via the `Skill` tool; `plan-verifier` does neither (lean — names principles only). A quick `awk`-extract-frontmatter + `grep` check catches a read-only agent accidentally shipped with write tools before it's ever invoked.
+
+**Refinement (same session): the `Skill` tool does NOT break read-only — `permissionMode: plan` does the gating, so a read-only reviewer can safely carry `Skill` to load skills on demand.** `architecture-reviewer.md:8` was updated to `tools: Read, Grep, Glob, Bash, Skill` so it can *preload* the two architecture skills AND *invoke* others (`zod`, `security`, backend/UI sets) when a diff needs a rule to judge a boundary — hybrid wiring, like a read-only version of the planner+implementer split. Invoking a skill only loads instructions; it writes nothing, and plan mode still forbids all mutations. So the read-only invariant to validate is "no `Edit`/`Write` + `permissionMode: plan`" — NOT "no `Skill`." `plan-verifier` still deliberately carries no `Skill` (lean, names principles only), so the two read-only agents now differ on purpose.
+
 ## Open Questions
 
 _No entries yet._
