@@ -22,7 +22,9 @@ _No entries yet._
 
 ## Tool & Library Notes
 
-_No entries yet._
+**Attaching skills to a `.claude/agents/*.md` subagent: `skills:` preloads the body, `Skill` tool invokes on demand — they are different mechanisms.** To have a subagent load a skill's *full content* at startup, list it under the `skills:` frontmatter field (NOT by adding `Skill` to `tools`). A subagent can still invoke any other project/user skill dynamically at runtime as long as the `Skill` tool is in its `tools:` list. We use both deliberately: `planner.md:9` preloads only the two architecture skills (`onion-architecture`, `frontend-architecture`) via `skills:` so planning is grounded in real practice content, while `implementer.md` keeps `Skill` in `tools` and invokes the backend/UI skill set on demand (preloading every set would bloat context for an agent that does both UI and backend). `permissionMode: plan` (planner.md:8) makes an agent runtime-read-only — stronger than merely omitting Write/Edit from `tools`.
+
+**Parallel implementer agents share the working tree — collision safety is by file ownership, not isolation.** `implementer.md` intentionally omits `isolation: worktree`; multiple implementers run in the same branch/checkout. The only thing preventing overwrites is the planner decomposing tasks so no two own the same file (`planner.md` task table + "Files owned" column). If you re-enable parallelism, keep task file-sets disjoint or add `isolation: worktree` back.
 
 ## Recurring Errors & Fixes
 
