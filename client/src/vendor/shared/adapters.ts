@@ -181,6 +181,16 @@ export interface GitClient {
   blame(repo: RepoRef, path: string): Promise<BlameLine[]>;
   log(repo: RepoRef, path?: string): Promise<GitCommit[]>;
   readFile(repo: RepoRef, path: string): Promise<string>;
+  /**
+   * Sandboxed read of a repo-relative path from the local clone: resolves
+   * INSIDE the clone dir and rejects path-traversal (`..`) or symlink
+   * escapes. Returns `null` — never throws — when the path is unsafe,
+   * missing, or unreadable, so callers on attacker-controlled input (PR-body
+   * links, LLM-suggested paths) can degrade gracefully instead of crashing.
+   * Unlike `readFile` (above), this is the safe default for any relative
+   * path that did NOT come from a trusted, already-verified source.
+   */
+  readFileSafe(repo: RepoRef, relPath: string): Promise<string | null>;
   clonePathFor(repo: RepoRef): string;
 }
 

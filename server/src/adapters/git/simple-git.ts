@@ -1,6 +1,6 @@
 import { simpleGit, type SimpleGit } from 'simple-git';
-import { join } from 'node:path';
-import { mkdir, readFile, access, rm } from 'node:fs/promises';
+import { isAbsolute, join, resolve, sep } from 'node:path';
+import { mkdir, readFile, realpath, access, rm } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import type {
   GitClient,
@@ -128,6 +128,43 @@ export class SimpleGitClient implements GitClient {
 
   async readFile(repo: RepoRef, path: string): Promise<string> {
     return readFile(join(this.clonePathFor(repo), path), 'utf8');
+  }
+
+  /**
+   * Sandboxed read (port contract in `@devdigest/shared`'s `GitClient`).
+   * `relPath` is treated as ATTACKER-CONTROLLED (PR-body-derived plan/spec
+   * references, LLM-suggested evidence paths) — reject `..`-escapes and
+   * symlink escapes rather than trusting a caller-side shape check. Never
+   * throws; returns `null` for any unsafe/missing/unreadable path.
+   */
+  async readFileSafe(repo: RepoRef, relPath: string): Promise<string | null> {
+    const cloneRoot = this.clonePathFor(repo);
+    const abs = await this.safeResolve(cloneRoot, relPath);
+    if (!abs) return null;
+    try {
+      return await readFile(abs, 'utf8');
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Resolve `rel` against `cloneRoot`, refusing anything that escapes it via
+   * `..` traversal or a symlink pointing outside the clone. Returns the
+   * resolved absolute path, or `null` when unsafe / non-existent.
+   */
+  private async safeResolve(cloneRoot: string, rel: string): Promise<string | null> {
+    if (!rel || isAbsolute(rel) || rel.includes('\0')) return null;
+    const target = resolve(cloneRoot, rel);
+    const rootWithSep = cloneRoot.endsWith(sep) ? cloneRoot : cloneRoot + sep;
+    if (target !== cloneRoot && !target.startsWith(rootWithSep)) return null;
+    try {
+      const real = await realpath(target);
+      if (real !== cloneRoot && !real.startsWith(rootWithSep)) return null;
+      return real;
+    } catch {
+      return null;
+    }
   }
 }
 

@@ -15,6 +15,7 @@
 export {
   assemblePrompt,
   wrapUntrusted,
+  INTENT_RULE,
   type PromptParts,
   type AssembledPrompt,
 } from './prompt.js';

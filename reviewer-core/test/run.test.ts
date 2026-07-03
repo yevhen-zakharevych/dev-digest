@@ -135,4 +135,37 @@ describe('reviewPullRequest (engine)', () => {
     expect(seen.length).toBeGreaterThan(0);
     expect(seen.every((s) => s === 'sess-abc')).toBe(true);
   });
+
+  it('threads ReviewInput.intent into the prompt assembly (Intent Layer)', async () => {
+    const llm = new MockLLMProvider('openai', { structured: fixture });
+    const diff = await new MockGitClient().diff();
+
+    const outcome = await reviewPullRequest({
+      systemPrompt: 'security reviewer',
+      model: 'gpt-4.1',
+      diff,
+      llm,
+      intent: 'Adds rate limiting to the public /api endpoints; out of scope: auth changes.',
+    });
+
+    expect(outcome.assembly.intent).toBe(
+      'Adds rate limiting to the public /api endpoints; out of scope: auth changes.',
+    );
+    expect(outcome.assembly.user).toContain('## Intent (constrains your review)');
+  });
+
+  it('omits the intent section from the assembly when ReviewInput.intent is not supplied', async () => {
+    const llm = new MockLLMProvider('openai', { structured: fixture });
+    const diff = await new MockGitClient().diff();
+
+    const outcome = await reviewPullRequest({
+      systemPrompt: 'security reviewer',
+      model: 'gpt-4.1',
+      diff,
+      llm,
+    });
+
+    expect(outcome.assembly.intent ?? null).toBeNull();
+    expect(outcome.assembly.user).not.toContain('## Intent (constrains your review)');
+  });
 });

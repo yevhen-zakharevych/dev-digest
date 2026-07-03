@@ -33,6 +33,15 @@ export function wrapUntrusted(label: string, content: string): string {
   return `<untrusted source="${label}">\n${safe}\n</untrusted>`;
 }
 
+/**
+ * Trusted scope rule for the intent block. Server-authored constant, NEVER
+ * derived from PR content — it sits OUTSIDE the `wrapUntrusted` fence in
+ * `assemblePrompt`, alongside the intent data (untrusted) inside it.
+ */
+export const INTENT_RULE =
+  "Stay within this PR's stated intent. Do not comment outside it. If you see a serious " +
+  'problem outside the stated scope, emit exactly ONE signal finding for it, not many.';
+
 /** Cap the PR description so a huge author body can't blow the token budget. */
 const MAX_PR_DESCRIPTION_CHARS = 4000;
 
@@ -66,6 +75,15 @@ export interface PromptParts {
    * undefined → section omitted.
    */
   prDescription?: string;
+  /**
+   * Pre-classified intent summary (server-derived from title/body/linked
+   * issue/plan/hunk headers by a separate cheap-model call; classification
+   * itself is the caller's job, not this engine's). Untrusted — author-
+   * controlled content flows into it — delimiter-wrapped; the trusted scope
+   * rule (`INTENT_RULE`) is rendered OUTSIDE the fence. Rendered before
+   * `## Diff to review`. Empty/undefined → section omitted.
+   */
+  intent?: string;
   /** The unified diff / user task (untrusted content). */
   diff: string;
   /** Optional task framing line, e.g. "Review PR #482 '…'". */
@@ -101,6 +119,9 @@ export function assemblePrompt(parts: PromptParts): AssembledPrompt {
       ? parts.prDescription.slice(0, MAX_PR_DESCRIPTION_CHARS)
       : undefined;
 
+  const intentBlock =
+    parts.intent && parts.intent.trim().length > 0 ? parts.intent : undefined;
+
   const userSections: string[] = [];
   if (parts.task) userSections.push(parts.task);
   if (prDescription) {
@@ -115,6 +136,11 @@ export function assemblePrompt(parts: PromptParts): AssembledPrompt {
   if (parts.callers && parts.callers.trim().length > 0) {
     userSections.push(
       `## Callers of changed symbols\n${wrapUntrusted('callers', parts.callers)}`,
+    );
+  }
+  if (intentBlock) {
+    userSections.push(
+      `## Intent (constrains your review)\n${INTENT_RULE}\n${wrapUntrusted('intent', intentBlock)}`,
     );
   }
   userSections.push(`## Diff to review\n${wrapUntrusted('diff', parts.diff)}`);
@@ -134,6 +160,7 @@ export function assemblePrompt(parts: PromptParts): AssembledPrompt {
     callers: parts.callers ?? null,
     repo_map: parts.repoMap ?? null,
     pr_description: prDescription ?? null,
+    intent: parts.intent ?? null,
     user,
   };
 

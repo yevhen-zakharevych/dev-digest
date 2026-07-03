@@ -1,10 +1,11 @@
 import type { Container } from '../../platform/container.js';
-import type { FindingActionKind, RunEventKind, RunTrace } from '@devdigest/shared';
+import type { FindingActionKind, PrIntentRecord, RunEventKind, RunTrace } from '@devdigest/shared';
 import { AppError, NotFoundError } from '../../platform/errors.js';
 import type { AgentRow } from '../../db/rows.js';
 import { ReviewRepository } from './repository.js';
 import { type ReviewDto, type ReviewDtoFinding } from './helpers.js';
 import { ReviewRunExecutor, type Logger } from './run-executor.js';
+import { IntentService } from './intent.service.js';
 import { actOnFinding as actOnFindingImpl } from './findings.js';
 import { reviewToDto } from './helpers.js';
 
@@ -29,11 +30,13 @@ export class ReviewService {
   private repo: ReviewRepository;
   private agents: Container['agentsRepo'];
   private executor: ReviewRunExecutor;
+  private intent: IntentService;
 
   constructor(private container: Container) {
     this.repo = new ReviewRepository(container.db);
     this.agents = container.agentsRepo;
-    this.executor = new ReviewRunExecutor(container, this.repo, this.agents);
+    this.intent = new IntentService(container, this.repo);
+    this.executor = new ReviewRunExecutor(container, this.repo, this.agents, this.intent);
   }
 
   // ===========================================================================
@@ -176,5 +179,20 @@ export class ReviewService {
 
   async getRunTrace(runId: string): Promise<RunTrace | undefined> {
     return this.repo.getRunTrace(runId);
+  }
+
+  // ===========================================================================
+  // Intent Layer (L03) — thin delegation to IntentService, keeps the `service.*`
+  // call shape uniform for routes.
+  // ===========================================================================
+
+  /** Cheap DB read (no LLM) — `null` when no intent has been computed yet. */
+  async getIntent(workspaceId: string, prId: string): Promise<PrIntentRecord | null> {
+    return this.intent.getIntent(workspaceId, prId);
+  }
+
+  /** Force a fresh classify + persist (manual "Recompute" trigger). */
+  async classifyIntent(workspaceId: string, prId: string, logger?: Logger): Promise<PrIntentRecord> {
+    return this.intent.classifyIntent(workspaceId, prId, logger);
   }
 }

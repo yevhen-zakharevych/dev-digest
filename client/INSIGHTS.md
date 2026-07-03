@@ -18,7 +18,7 @@ _No entries yet._
 
 ## Codebase Patterns
 
-_No entries yet._
+**A "may not exist yet" DB-backed resource is typed `api.get<T | null>(...)`, not `api.get<T>(...)`.** `usePullDetail` (`client/src/lib/hooks/core.ts:114-120`) always has a row so it types the plain `PrDetail`. `usePrIntent` (`client/src/lib/hooks/brief.ts`) hits `GET /pulls/:id/intent`, which returns `null` before the first classification runs — typing it `api.get<PrIntentRecord | null>(...)` (not `PrIntentRecord`) lets the consuming component branch on "not computed yet" vs a loading/error state without a cast. Same shape will recur for any lazily-computed per-PR artifact (e.g. the sibling `risk_brief` feature) — check whether the GET can legitimately return `null` before assuming the non-null contract type.
 
 ## Tool & Library Notes
 
@@ -31,6 +31,14 @@ _No entries yet._
 ## Recurring Errors & Fixes
 
 _No entries yet._
+
+## Codebase Patterns (continued)
+
+**`SectionLabel`'s `right` prop is the idiom for an inline header action — don't wrap it in a custom flex row.** `client/src/vendor/ui/primitives/SectionLabel.tsx:7-11,28` accepts `right?: React.ReactNode` and renders it `marginLeft: auto` beside the uppercase label. Already used this way at `client/src/app/repos/[repoId]/pulls/[number]/_components/FindingsTab/FindingsTab.tsx:153-158` (a muted caption) and now for `IntentCard`'s "Recompute" button (`client/src/app/repos/[repoId]/pulls/[number]/_components/IntentCard/IntentCard.tsx`, `<SectionLabel icon="Target" right={recomputeButton}>`). Building a separate `display:flex; justify-content:space-between` wrapper around `SectionLabel` + an action element is redundant — pass the action as `right` instead.
+
+**`Button`'s `loading` prop already swaps in an animated `RefreshCw` icon and disables the button — don't hand-roll a spinner/disabled ternary.** `client/src/vendor/ui/primitives/Button.tsx:18,24,71`: `loading={mutation.isPending}` is sufficient for the icon+disabled state; only the button LABEL text still needs a ternary (e.g. `recompute.isPending ? t("recomputing") : t("recompute")`) since the component has no separate "loading label" slot.
+
+**A card whose data hook expects a non-nullable id (e.g. `usePrIntent`/`useRecomputeIntent`, `prId: string | number`) should keep that prop non-nullable and let the ROUTE-LEVEL parent guard on `!= null` before rendering — don't loosen the card's own prop type.** `client/src/app/repos/[repoId]/pulls/[number]/page.tsx:36`'s local `prId` is `string | null` (resolved from the `usePulls` list by PR number before the PR row itself has loaded), threaded through `OverviewTab` which does the guard: `client/src/app/repos/[repoId]/pulls/[number]/_components/OverviewTab/OverviewTab.tsx:16` — `{prId != null && <IntentCard prId={prId} />}`. `DiffTab` (`client/src/app/repos/[repoId]/pulls/[number]/_components/DiffTab/DiffTab.tsx:11`) is a deliberate counter-example: it types `prId: string | null` directly because its hooks (`usePrComments`/`useCreatePrComment`) are designed to no-op on null. Check whether the underlying hook tolerates `null` before choosing which pattern to follow for a new card.
 
 ## Session Notes
 
@@ -72,6 +80,15 @@ The skill body editor needed line numbers, monospace, "unsaved" indicator, and a
 **`activeScanId` is ephemeral React state — lost on page reload while a scan is running.**
 `ConventionsListView` stores the current scan ID in `useState`, which evaporates on navigation or reload. After reload, `latestScan.data?.status === 'running'` remains true (the server knows the job is running), the spinner shows, but no SSE events flow because `useRunEvents` receives an empty array. Fix: add a `useEffect` that seeds `activeScanId` from `latestScan.data.scan_id` whenever the scan status is `'running'` and `activeScanId` is not yet set (`client/src/app/conventions/_components/ConventionsListView/ConventionsListView.tsx:52`). The same pattern applies to any page that drives SSE from a background job stored on the server.
 
+### 2026-07-04 — Intent Layer client tests (D1 + D2)
+
+**A component whose data comes from a `lib/hooks/<domain>.ts` TanStack hook is tested by `vi.mock`-ing the hooks module, NOT by standing up a real `QueryClientProvider` + fetch mock — there is no MSW/network-mock precedent anywhere in `client/`.** Confirmed via `grep -rln "fetch" client/src --include="*.test.tsx"` returning zero hits before this session. `RunStatus.test.tsx:6-8`, `FindingsPanel.test.tsx:7-9`, and `RunReviewDropdown.test.tsx:7-14` all `vi.mock` the exact hook-module specifier the component imports (e.g. `vi.mock("../../../../../lib/hooks/reviews", () => ({ useRunEvents: () => (...) }))`), then set per-test `mockReturnValue`/`mockImplementation` to drive loading/data/pending states. `IntentCard.test.tsx` follows suit: `vi.mock("@/lib/hooks/brief", () => ({ usePrIntent: vi.fn(), useRecomputeIntent: vi.fn() }))`, controlled per-test via `vi.mocked(usePrIntent).mockReturnValue(...)`. Reach for a real `QueryClientProvider` + fetch stub only when the test's actual subject IS the hook itself (see next entry) — not when testing a consuming component.
+
+**`@testing-library/user-event` is not an installed devDependency in `client/package.json`, despite the `react-testing-library` skill recommending it over `fireEvent`.** Importing it throws a Vite "Failed to resolve import" error at collection time (not a normal assertion failure — the whole suite file fails to load). The two existing tests that simulate clicks, `FindingCard.test.tsx:55,57` and `RunTraceDrawer.test.tsx:52`, both use `fireEvent.click(...)` directly from `@testing-library/react`. Any new interactive component test must follow `fireEvent`, not silently add the `user-event` package (that would be a non-test-file/package.json change outside a test-writer's scope).
+
+**`client/src/lib/hooks/` had zero test files before this session — `brief.test.tsx` is the first, and it's the one case that DOES need a real `QueryClientProvider` + `vi.stubGlobal("fetch", ...)`.** Because the hook itself (`usePrIntent`/`useRecomputeIntent` in `client/src/lib/hooks/brief.ts:10-32`) is the subject under test, mocking it out would test nothing — instead stub `global.fetch` to return a `Response`-shaped object (`{ ok, status, json: async () => body }`) matching what `src/lib/api.ts`'s `apiFetch` expects, and assert the exact URL/method it was called with (`http://localhost:3001/pulls/pr1/intent`, the `API_BASE` default). For the `invalidateQueries` assertion, build one `QueryClient` instance per test and `vi.spyOn(qc, "invalidateQueries")` on that SAME instance passed into the `QueryClientProvider` wrapper — a helper that constructs a fresh `QueryClient` per hook render (rather than once, captured and reused) will never see the spy invoked, since `useMutation`'s `onSuccess` closes over whichever client `useQueryClient()` resolved inside the wrapper, not the one the spy was attached to if they differ.
+
+**Mutation sanity-check (3 mutations, all confirmed red, all reverted cleanly):** relaxing `IntentCard.tsx`'s `in_scope.length > 0` to `>= 0` breaks the empty-array em-dash test (it renders an empty `<ul>` instead of "—"); replacing the Recompute button's `onClick={() => recompute.mutate({ prId })}` with a no-op breaks both recompute tests (`mutate` never called); changing `useRecomputeIntent`'s `invalidateQueries({ queryKey: ["intent", prId] })` to a wrong key breaks the hook test's exact-match assertion. `git diff --stat` on the two touched product files showed no diff after each revert, confirming the working tree returned to its pre-mutation state.
 
 ## Open Questions
 

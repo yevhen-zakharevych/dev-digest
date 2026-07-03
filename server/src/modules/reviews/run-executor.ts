@@ -8,6 +8,8 @@ import type { ReviewRepository, FindingRow, PullRow, ReviewRow } from './reposit
 import { REVIEW_STRATEGY } from './constants.js';
 import { taskLine } from './helpers.js';
 import { loadDiff } from './diff-loader.js';
+import type { IntentService } from './intent.service.js';
+import { formatIntentForPrompt } from './intent.service.js';
 
 /** Thrown by a run when the user cancels it mid-flight (between map files). */
 export class RunCancelledError extends Error {
@@ -45,6 +47,7 @@ export class ReviewRunExecutor {
     private container: Container,
     private repo: ReviewRepository,
     private agents: Container['agentsRepo'],
+    private intentService: IntentService,
   ) {}
 
   /**
@@ -104,6 +107,23 @@ export class ReviewRunExecutor {
     }
     runLog.info(`Diff ready — ${diff.files.length} changed file(s); starting ${jobs.length} agent run(s)`);
 
+    // Intent Layer (L03) — computed ONCE, shared by every queued agent. Best-
+    // effort: a classify failure must NOT fail the review (intent is an
+    // enhancement, not a gate — the review must still run and stay grounded).
+    let intentText: string | undefined;
+    try {
+      const existing = await this.intentService.getIntent(workspaceId, pull.id);
+      const record = existing ?? (await this.intentService.classifyIntent(workspaceId, pull.id, logger));
+      intentText = formatIntentForPrompt(record);
+      runLog.info(existing ? 'Intent: using stored classification' : 'Intent: classified and stored');
+    } catch (err) {
+      runLog.info(`Intent classification skipped — ${(err as Error).message}`);
+      logger?.warn(
+        { prId: pull.id, err: (err as Error).message },
+        'review: intent classification failed; continuing without intent',
+      );
+    }
+
     for (const { agent, runId } of jobs) {
       const agentStart = Date.now();
       logger?.info(
@@ -111,7 +131,7 @@ export class ReviewRunExecutor {
         `review: agent "${agent.name}" started (${agent.provider}/${agent.model})`,
       );
       try {
-        const outcome = await this.runOneAgent(workspaceId, pull, repo, diff, agent, runId, runLog);
+        const outcome = await this.runOneAgent(workspaceId, pull, repo, diff, agent, runId, runLog, intentText);
         logger?.info(
           {
             runId,
@@ -143,6 +163,7 @@ export class ReviewRunExecutor {
     agent: AgentRow,
     runId: string,
     parentLog: RunLogger,
+    intentText?: string,
   ): Promise<RunOutcome> {
     const start = Date.now();
     // Narrow the fanned-out pre-work logger to THIS run; the shared diff/intent
@@ -223,6 +244,10 @@ export class ReviewRunExecutor {
         // PR author's description/body — untrusted; assemblePrompt wraps +
         // truncates it. Omitted when the PR has no body.
         ...(pull.body ? { prDescription: pull.body } : {}),
+        // Intent Layer (L03) — pre-classified summary + scope (untrusted;
+        // fenced downstream with the trusted INTENT_RULE outside the fence).
+        // Omitted when classification was skipped/failed above.
+        ...(intentText ? { intent: intentText } : {}),
         task,
         sessionId: `${repo.owner}/${repo.name}#${pull.number}:${agent.name}`,
         onEvent: (e) => runLog.event(e.kind, e.msg, e.data),
