@@ -51,6 +51,8 @@
     "blockers": " · {count} blockers"
   },
   "smartDiff": {
+    "smartOrder": "Smart order",
+    "originalOrder": "Original order",
     "coreLabel": "Core",
     "wiringLabel": "Wiring",
     "boilerplateLabel": "Boilerplate",
@@ -58,6 +60,8 @@
     "largeBody": "Consider splitting it into smaller, focused PRs for easier review:",
     "filesCount": "{count} files",
     "findingLines": "{count} finding-lines",
+    "findingsCount": "{count, plural, one {# finding} other {# findings}}",
+    "jumpToFinding": "Jump to findings in the diff",
     "groupedByRole": "Smart Diff · grouped by role"
   },
   "list": {

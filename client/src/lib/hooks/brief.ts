@@ -4,13 +4,22 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
-import type { PrIntentRecord } from "@devdigest/shared";
+import type { PrIntentRecord, SmartDiff } from "@devdigest/shared";
 
 // ---- Stored intent for a PR (cheap DB read, no LLM) ----
 export function usePrIntent(prId: string | number | null | undefined) {
   return useQuery({
     queryKey: ["intent", prId],
     queryFn: () => api.get<PrIntentRecord | null>(`/pulls/${prId}/intent`),
+    enabled: prId != null,
+  });
+}
+
+// ---- Smart Diff composition for a PR (deterministic, always computes) ----
+export function useSmartDiff(prId: string | null | undefined) {
+  return useQuery({
+    queryKey: ["smart-diff", prId],
+    queryFn: () => api.get<SmartDiff>(`/pulls/${prId}/smart-diff`),
     enabled: prId != null,
   });
 }

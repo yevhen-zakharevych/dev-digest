@@ -59,13 +59,30 @@ export default function PRDetailPage() {
 
   const tab = search.get("tab") ?? "overview";
   const traceRunId = search.get("trace");
-  const setParam = (key: string, val: string | null) => {
+  const findingId = search.get("findingId");
+  // setParams sets several query keys in one shallow nav — used by the Smart
+  // Diff deep-link so the tab switch + target finding land in a SINGLE
+  // router.replace instead of two (which would otherwise race).
+  const setParams = (entries: Record<string, string | null>) => {
     const sp = new URLSearchParams(search.toString());
-    if (val == null) sp.delete(key);
-    else sp.set(key, val);
+    for (const [key, val] of Object.entries(entries)) {
+      if (val == null) sp.delete(key);
+      else sp.set(key, val);
+    }
     router.replace(`/repos/${repoId}/pulls/${number}${sp.toString() ? `?${sp.toString()}` : ""}`);
   };
+  const setParam = (key: string, val: string | null) => setParams({ [key]: val });
   const setTab = (t: string) => setParam("tab", t);
+
+  // Deep-link from a Smart-Diff severity badge → Findings tab, auto-expanded
+  // and scrolled to. `findingNonce` is in-memory (not in the URL) so
+  // re-clicking the SAME finding still re-triggers the expand+scroll even
+  // though the URL itself doesn't change.
+  const [findingNonce, setFindingNonce] = React.useState(0);
+  const handleOpenFinding = (id: string) => {
+    setParams({ tab: "findings", findingId: id });
+    setFindingNonce((n) => n + 1);
+  };
 
   // Reviews come newest-first; each is its own run (grouped into accordions).
   const runs = reviews ?? [];
@@ -147,6 +164,11 @@ export default function PRDetailPage() {
             prCommits={pr.commits}
             repoFullName={repoFullName}
             headSha={pr.head_sha}
+            findingId={findingId}
+            nonce={findingNonce}
+            onFindingConsumed={() => {
+              if (findingId) setParam("findingId", null);
+            }}
             cancelMutation={cancel}
             onOpenTrace={(id) => setParam("trace", id)}
             onDelete={(id) => {
@@ -167,6 +189,7 @@ export default function PRDetailPage() {
             filesCount={pr.files_count}
             files={pr.files}
             canComment={pr.status === "open"}
+            onOpenFinding={handleOpenFinding}
           />
         )}
       </div>

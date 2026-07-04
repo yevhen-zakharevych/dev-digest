@@ -31,6 +31,8 @@ export function FindingCard({
   pending,
   repoFullName,
   headSha,
+  targetFindingId = null,
+  targetNonce = 0,
 }: {
   f: FindingRecord;
   focused?: boolean;
@@ -39,9 +41,24 @@ export function FindingCard({
   pending?: boolean;
   repoFullName?: string | null;
   headSha?: string | null;
+  /** When this matches f.id, the card force-expands, scrolls into view, and
+   *  highlights (driven from a Smart-Diff severity-badge deep link — mirrors
+   *  ReviewRunAccordion's targetRunId/targetNonce one level up). */
+  targetFindingId?: string | null;
+  targetNonce?: number;
 }) {
   const t = useTranslations("prReview");
   const [expanded, setExpanded] = React.useState(defaultExpanded ?? false);
+  const [highlighted, setHighlighted] = React.useState(false);
+  const rootRef = React.useRef<HTMLDivElement | null>(null);
+  React.useEffect(() => {
+    if (targetFindingId && f.id === targetFindingId) {
+      setExpanded(true);
+      setHighlighted(true);
+      rootRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [targetFindingId, targetNonce, f.id]);
   const sevColor = SEV_COLOR[f.severity] ?? SEV_COLOR_FALLBACK;
   const fileHref =
     repoFullName && headSha
@@ -52,7 +69,11 @@ export function FindingCard({
   const muted = accepted || dismissed;
 
   return (
-    <div data-finding-id={f.id} style={s.card(!!focused, sevColor, muted)}>
+    <div
+      ref={rootRef}
+      data-finding-id={f.id}
+      style={{ ...s.card(!!focused || highlighted, sevColor, muted), scrollMarginTop: 16 }}
+    >
       <div onClick={() => setExpanded((e) => !e)} style={s.header}>
         <div style={s.badgeWrap}>
           <SeverityBadge severity={f.severity as UISeverity} compact />

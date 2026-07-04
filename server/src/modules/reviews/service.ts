@@ -1,11 +1,12 @@
 import type { Container } from '../../platform/container.js';
-import type { FindingActionKind, PrIntentRecord, RunEventKind, RunTrace } from '@devdigest/shared';
+import type { FindingActionKind, PrIntentRecord, RunEventKind, RunTrace, SmartDiff } from '@devdigest/shared';
 import { AppError, NotFoundError } from '../../platform/errors.js';
 import type { AgentRow } from '../../db/rows.js';
 import { ReviewRepository } from './repository.js';
 import { type ReviewDto, type ReviewDtoFinding } from './helpers.js';
 import { ReviewRunExecutor, type Logger } from './run-executor.js';
 import { IntentService } from './intent.service.js';
+import { SmartDiffService } from './smart-diff.service.js';
 import { actOnFinding as actOnFindingImpl } from './findings.js';
 import { reviewToDto } from './helpers.js';
 
@@ -31,11 +32,13 @@ export class ReviewService {
   private agents: Container['agentsRepo'];
   private executor: ReviewRunExecutor;
   private intent: IntentService;
+  private smartDiff: SmartDiffService;
 
   constructor(private container: Container) {
     this.repo = new ReviewRepository(container.db);
     this.agents = container.agentsRepo;
     this.intent = new IntentService(container, this.repo);
+    this.smartDiff = new SmartDiffService(this.repo);
     this.executor = new ReviewRunExecutor(container, this.repo, this.agents, this.intent);
   }
 
@@ -194,5 +197,15 @@ export class ReviewService {
   /** Force a fresh classify + persist (manual "Recompute" trigger). */
   async classifyIntent(workspaceId: string, prId: string, logger?: Logger): Promise<PrIntentRecord> {
     return this.intent.classifyIntent(workspaceId, prId, logger);
+  }
+
+  // ===========================================================================
+  // Smart Diff (L03) — thin delegation to SmartDiffService, keeps the
+  // `service.*` call shape uniform for routes.
+  // ===========================================================================
+
+  /** Compute-on-read Smart Diff (no LLM, no persistence). */
+  async getSmartDiff(workspaceId: string, prId: string): Promise<SmartDiff> {
+    return this.smartDiff.getSmartDiff(workspaceId, prId);
   }
 }
