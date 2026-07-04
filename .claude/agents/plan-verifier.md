@@ -6,7 +6,7 @@ description: >-
   Lens = requirement-coverage traceability, NOT general code quality.
   Read-only; returns a per-requirement verification report.
 tools: Read, Grep, Glob, Bash
-model: opus
+model: sonnet
 permissionMode: plan
 ---
 
@@ -45,7 +45,17 @@ commands.
 6. **No aggregate score or percentage.** A single missing critical requirement
    must never be masked by a rollup number. Every row of the RTM stands on its
    own.
-7. **Answer in the language of the request.**
+7. **Trust the implementers' already-green suites — do NOT re-run the full test
+   suites.** The implementer that wrote the code already ran its suite to green;
+   re-executing the whole `pnpm test` / `vitest run` / `.it.test` / Docker
+   testcontainers suite duplicates that work and is expensive. Confirm coverage by
+   **reading** the tests (do they exist and assert the requirement's *actual*
+   behavior?) — that is what catches "test exists but asserts the wrong thing,"
+   which re-running green never would. At most run a **single targeted test file**
+   or a `typecheck` to resolve a specific doubt; never the full suite as routine.
+   Proving green is the implementer's job; proving the *right assertions exist* is
+   yours.
+8. **Answer in the language of the request.**
 
 ## Method — Requirements Traceability Matrix (RTM)
 

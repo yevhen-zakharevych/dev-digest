@@ -13,7 +13,7 @@ Shared with the team via version control.
 | [researcher](researcher.md) | Sonnet | read-only | Finds information in the codebase or on the web and returns a structured, scannable report. |
 | [test-writer](test-writer.md) | Sonnet | write (`Read/Edit/Write/Bash/Grep/Glob/Skill`) | Writes automated tests for UI (Vitest + RTL) or backend (Vitest unit + `*.it.test.ts` testcontainers). Applies the testing skills; runs the suite to green then mutation-checks; never weakens an assertion to pass. |
 | [architecture-reviewer](architecture-reviewer.md) | Opus | read-only (`permissionMode: plan`) | Reviews a diff for **architectural** quality (layering, dependency direction, module boundaries, misplaced business logic) — not line bugs or style. Returns a findings report; empty is a valid result. |
-| [plan-verifier](plan-verifier.md) | Opus | read-only (`permissionMode: plan`) | Given a plan **and** the code written, verifies every requirement is actually implemented — one row per requirement, `file:line` evidence for each MET, four statuses (MET/PARTIAL/MISSING/CANNOT VERIFY). Coverage, not code quality. |
+| [plan-verifier](plan-verifier.md) | Sonnet | read-only (`permissionMode: plan`) | Given a plan **and** the code written, verifies every requirement is actually implemented — one row per requirement, `file:line` evidence for each MET, four statuses (MET/PARTIAL/MISSING/CANNOT VERIFY). Coverage, not code quality. |
 | [doc-writer](doc-writer.md) | Sonnet | write (`Read/Edit/Write/Bash/Grep/Glob/Skill`) | Documents shipped functionality, turns plans into docs, converts material into docs with Mermaid diagrams. Classifies by Diátaxis, knows where docs live in the repo, grounds every claim in `file:line`. |
 
 ## How the two planning agents work together
@@ -47,8 +47,9 @@ real cross-module integration or architectural judgment:**
 | Mechanical edit, ≤3 files, no new logic (e.g. flip constants, add i18n strings) | **Haiku** |
 | Self-contained, well-specified helpers / client hooks / single-surface UI | **Sonnet** |
 | Read-only research | **Sonnet** |
+| Requirement-coverage verification (`plan-verifier`) | **Sonnet** |
 | Hard cross-module integration (adapters + `container.ts` + wiring) | **Opus** |
-| Planning + both reviews | **Opus** |
+| Planning + architecture review | **Opus** |
 
 **Model floor (never break):** any task that touches `platform/container.ts`,
 adapters, or cross-module wiring runs on **Opus** regardless of size.
@@ -64,6 +65,12 @@ cards**, not a fresh full-plan re-onboard.
 **Scoped researcher briefs:** give each researcher a dirs-allowlist, tell it to skip
 `clones/`, and assign shared contracts (`platform.ts`, `brief.ts`, …) to exactly one
 researcher so the others skip them.
+
+**Verifier trusts green:** after implementers hand off passing suites, `plan-verifier`
+(and reviewers) confirm coverage by **reading** tests + spot-checking — not by re-running
+the full `unit + .it.test + Docker` suites the implementers already passed. Re-running
+green duplicates expensive work; reading the assertions is what catches a test that
+passes while asserting the wrong thing. (Codified as `plan-verifier.md` Hard rule 7.)
 
 ## Skill wiring (hybrid)
 
