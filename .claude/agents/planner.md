@@ -102,12 +102,32 @@ Emit exactly these sections, in order:
 4. **Architecture Changes** — per module, per file, what changes and why.
 5. **Parallelizable Tasks** — a table:
 
-   | Task | Module | Files owned | Skills to apply | Tests to run | Depends-on |
-   |------|--------|-------------|-----------------|--------------|------------|
+   | Task | Module | Files owned (with `file:line` anchors) | Skills to apply | Acceptance criteria | Tests to run | Depends-on | Batch |
+   |------|--------|----------------------------------------|-----------------|---------------------|--------------|------------|-------|
 
    Decompose by file ownership (never two tasks on one file). Put any
    `@devdigest/shared` contract change in a single task and label it
    **[shared: two-file edit]**.
+
+   - **Files owned** — cite the exact `file:line` anchors the implementer will
+     edit, so it opens the minimal range, not the whole file.
+   - **Acceptance criteria** — testable statements of *done*. **Any requirement
+     from §2 that touches this task's files MUST appear here** (not only in the
+     global list) — including known follow-ups, spelled out with their algorithm
+     (e.g. "plan/body untouched; trim only hunk-headers to hit the token budget").
+     A requirement under-specified at the task level is what forces a later fix
+     round; fold it in now.
+   - **Batch** — a group id shared by disjoint tasks that are **safe to fuse into
+     one implementer spawn**: same module (same onboarding set), no `Depends-on`
+     between them, small combined scope, and **no shared-contract two-file edit**.
+     Leave blank for tasks that must run alone. This lets the orchestrator pay
+     onboarding once instead of per-task. Never batch across a `Depends-on` edge
+     or a shared-contract boundary.
+
+   Each row is a **self-contained task card**: the orchestrator hands the
+   implementer only that row's card (objective + owned files + skills + acceptance
+   criteria + tests + depends-on), never the whole plan. Write each row so it
+   stands alone.
 6. **Testing Strategy** — the per-module commands each task must run:
    - client: `cd client && pnpm test` (+ `pnpm typecheck`)
    - reviewer-core: `cd reviewer-core && npm test`
@@ -120,4 +140,6 @@ Emit exactly these sections, in order:
 ## Reminder
 
 The plan is the contract handed to implementers. Each task must be self-contained:
-objective, owned files, skills, tests, dependencies.
+objective, owned files (with `file:line` anchors), skills, **acceptance criteria**,
+tests, dependencies, and its batch id. The orchestrator hands out one card per task
+— not the whole plan — so a thin or under-specified card becomes a costly fix round.

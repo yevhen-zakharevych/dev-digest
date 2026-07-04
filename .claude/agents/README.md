@@ -33,6 +33,38 @@ request → planner (Opus, read-only) → Development Plan
         implementer ×N (Sonnet) — parallel, one task each, tests must stay green
 ```
 
+## Orchestration policy (token/cost right-sizing)
+
+The catalog `model` column is each agent's **default**. The orchestrator (main
+thread) may **override the model per spawn** and **fuse tasks** to cut cost and
+repeated onboarding, without touching quality.
+
+**Model routing — pick the cheapest model the task shape allows, escalate only for
+real cross-module integration or architectural judgment:**
+
+| Task shape | Model |
+|---|---|
+| Mechanical edit, ≤3 files, no new logic (e.g. flip constants, add i18n strings) | **Haiku** |
+| Self-contained, well-specified helpers / client hooks / single-surface UI | **Sonnet** |
+| Read-only research | **Sonnet** |
+| Hard cross-module integration (adapters + `container.ts` + wiring) | **Opus** |
+| Planning + both reviews | **Opus** |
+
+**Model floor (never break):** any task that touches `platform/container.ts`,
+adapters, or cross-module wiring runs on **Opus** regardless of size.
+
+**Task batching:** the planner tags disjoint, fuseable tasks with a shared **Batch**
+id. Fuse them into a single implementer spawn to pay onboarding once — but **never
+batch across a `Depends-on` edge or a shared-contract two-file edit.**
+
+**Task cards, not the whole plan:** hand each implementer only its plan row (the
+self-contained card), never the full plan doc. Feed review fixes back as **amended
+cards**, not a fresh full-plan re-onboard.
+
+**Scoped researcher briefs:** give each researcher a dirs-allowlist, tell it to skip
+`clones/`, and assign shared contracts (`platform.ts`, `brief.ts`, …) to exactly one
+researcher so the others skip them.
+
 ## Skill wiring (hybrid)
 
 The agents use the repo's `.claude/skills/`, loaded two different ways:

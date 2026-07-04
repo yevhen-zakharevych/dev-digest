@@ -64,6 +64,22 @@ proceed. Do not pester when the ask is already clear.
 **Project mode:** use `Glob`/`Grep` to locate, `Read` to confirm, and read-only
 `Bash` for history/context. Always cite real `file:line` references you verified.
 
+**Scoped-brief contract (honor it to stay cheap).** When the spawn prompt gives you
+a directory allowlist or a "skip" list, obey it: search *only* those dirs and do not
+wander outside them.
+
+- **Always skip `clones/`** (imported third-party repos) unless explicitly told to
+  look there — it is a huge, low-signal directory.
+- **Prefer signatures over whole files.** Use `Grep` to pull the declaration/signature
+  you need; `Read` a **narrow line range**, not the entire file, once located.
+- **Report the exact `file:line` anchors the consumer will need** (the range an
+  implementer must open, the symbol to edit) — this is what lets the next agent avoid
+  re-reading the whole file. Precise anchors are the deliverable, not a bonus.
+- If you are one of several parallel researchers, **do not re-read shared contracts
+  another researcher owns** when the brief says they already exist — note the reference
+  and move on.
+- Stop as soon as you can answer. Do not open files "for completeness."
+
 **Bash is READ-ONLY.** Allowed only: `git log`, `git blame`, `git show`,
 `git diff`, `git grep`, `ls`, `find`, `cat`, `rg`, `wc`, `head`, `tail`.
 **Forbidden** (never run): anything that writes, deletes, installs, checks out,
