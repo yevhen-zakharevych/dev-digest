@@ -42,6 +42,19 @@ export const INTENT_RULE =
   "Stay within this PR's stated intent. Do not comment outside it. If you see a serious " +
   'problem outside the stated scope, emit exactly ONE signal finding for it, not many.';
 
+/**
+ * Trusted rule for the diff block. Explains the `N:` line-number prefix the
+ * caller adds to every kept line (see `review/reduce.ts` `annotateDiffLines`)
+ * so the model cites those numbers verbatim instead of counting from the hunk
+ * header — the source of a real off-by-N line-citation bug where the model
+ * skipped leading context lines when computing an absolute line number.
+ */
+export const DIFF_LINE_NUMBER_RULE =
+  'Every kept (context or added) line below is prefixed with "N:" — its absolute line ' +
+  'number in the file AFTER this change. Deleted lines have no such prefix (they no ' +
+  "longer exist in the new file). When you cite a finding's start_line/end_line, copy " +
+  'these prefixed numbers exactly. Do not count lines yourself.';
+
 /** Cap the PR description so a huge author body can't blow the token budget. */
 const MAX_PR_DESCRIPTION_CHARS = 4000;
 
@@ -143,7 +156,9 @@ export function assemblePrompt(parts: PromptParts): AssembledPrompt {
       `## Intent (constrains your review)\n${INTENT_RULE}\n${wrapUntrusted('intent', intentBlock)}`,
     );
   }
-  userSections.push(`## Diff to review\n${wrapUntrusted('diff', parts.diff)}`);
+  userSections.push(
+    `## Diff to review\n${DIFF_LINE_NUMBER_RULE}\n${wrapUntrusted('diff', parts.diff)}`,
+  );
 
   const user = userSections.join('\n\n');
 

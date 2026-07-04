@@ -55,7 +55,16 @@ export function FindingCard({
     if (targetFindingId && f.id === targetFindingId) {
       setExpanded(true);
       setHighlighted(true);
-      rootRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      // Deferred to a macrotask: within the same commit, ReviewRunAccordion's
+      // own scrollIntoView (to its accordion root, see FindingsTab.tsx's
+      // effectiveTargetRunId comment) fires AFTER this effect (parent effects
+      // run after child effects) and would otherwise clobber this more precise
+      // scroll — always landing on the accordion's default-expanded first card
+      // instead of this finding.
+      const timer = setTimeout(() => {
+        rootRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 0);
+      return () => clearTimeout(timer);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [targetFindingId, targetNonce, f.id]);

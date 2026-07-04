@@ -93,4 +93,21 @@ describe("FindingCard — Smart-Diff deep-link (targetFindingId/targetNonce)", (
     );
     expect(screen.getByText("Move the key to an environment variable.")).toBeInTheDocument();
   });
+
+  it("defers its scrollIntoView call to a macrotask, so a same-tick parent scroll (ReviewRunAccordion's own) can't clobber it", () => {
+    const scrollSpy = vi.fn();
+    Element.prototype.scrollIntoView = scrollSpy;
+    vi.useFakeTimers();
+    try {
+      renderWithIntl(<FindingCard f={FINDING} onAction={() => {}} targetFindingId="f1" targetNonce={1} />);
+      // Still pending — a same-tick ancestor scroll (e.g. ReviewRunAccordion's
+      // own scrollIntoView on its root) would run and finish before this fires.
+      expect(scrollSpy).not.toHaveBeenCalled();
+      vi.runAllTimers();
+      expect(scrollSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+      Element.prototype.scrollIntoView = vi.fn();
+    }
+  });
 });

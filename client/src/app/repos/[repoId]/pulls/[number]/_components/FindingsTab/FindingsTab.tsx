@@ -104,19 +104,25 @@ export function FindingsTab({
     return review?.run_id ?? null;
   }, [findingId, runs]);
 
-  // Feed the resolved run into the SAME `target` state the Timeline uses
-  // (`handleGoToReview` above) — reuses ReviewRunAccordion's existing
-  // targetRunId/targetNonce force-open+scroll, no new accordion mechanism.
-  // Re-running whenever `resolvedTargetRunId` flips from null -> a value also
-  // covers the cold-load case (reviews arrive async after mount).
+  // Feed the resolved run into the SAME `targetRunId`/`targetNonce` the Timeline
+  // uses (`handleGoToReview` above) — reuses ReviewRunAccordion's existing
+  // force-open+scroll, no new accordion mechanism. Computed directly during
+  // render (not via a `useEffect` + `setTarget`) so ReviewRunAccordion sees the
+  // resolved run in the SAME commit as FindingCard sees its `targetFindingId`.
+  // An extra render round trip here would let ReviewRunAccordion's own
+  // scrollIntoView (to its accordion root) fire a whole render AFTER
+  // FindingCard's precise scroll to the specific finding, clobbering it —
+  // always landing on the accordion's default-expanded first card instead.
+  const effectiveTargetRunId = resolvedTargetRunId ?? target?.runId ?? null;
+  const effectiveTargetNonce = resolvedTargetRunId ? nonce : target?.n ?? 0;
+
+  // Strip ?findingId from the URL once the target run is resolved+revealed.
+  // Small delay so a FindingCard in an accordion that only just opened has
+  // mounted and consumed the target (via FindingTargetContext) before the
+  // param clears — clearing it does NOT collapse/unhighlight the card (that
+  // state is internal + one-way), it just tidies the URL.
   React.useEffect(() => {
     if (resolvedTargetRunId) {
-      setTarget((p) => ({ runId: resolvedTargetRunId, n: (p?.n ?? 0) + 1 }));
-      // Strip ?findingId from the URL once the target is revealed. Small delay so
-      // a FindingCard in an accordion that only just opened has mounted and
-      // consumed the target (via FindingTargetContext) before the param clears —
-      // clearing it does NOT collapse/unhighlight the card (that state is
-      // internal + one-way), it just tidies the URL.
       const timer = setTimeout(() => onFindingConsumed?.(), 600);
       return () => clearTimeout(timer);
     }
@@ -217,8 +223,8 @@ export function FindingsTab({
                 defaultOpen={i === 0}
                 repoFullName={repoFullName}
                 headSha={headSha}
-                targetRunId={target?.runId ?? null}
-                targetNonce={target?.n ?? 0}
+                targetRunId={effectiveTargetRunId}
+                targetNonce={effectiveTargetNonce}
               />
             ))}
           </FindingTargetContext.Provider>

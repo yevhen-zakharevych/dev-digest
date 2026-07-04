@@ -54,6 +54,60 @@ export function reduceReviews(partials: Review[]): Review {
   return { verdict, score, summary, findings };
 }
 
+/**
+ * Prefix every kept (context/added) line of a raw unified diff with its
+ * absolute NEW-file line number, e.g. `15:+export function foo() {`.
+ *
+ * Without this, the model has to derive the absolute line itself by counting
+ * from the `@@ -oldStart,oldLines +newStart,newLines @@` hunk header — and it
+ * reliably miscounts leading context lines (observed: reports the line where
+ * the interesting code starts as if it were `newStart`, skipping the context
+ * lines before it). The citation-grounding gate (`grounding.ts`) only checks
+ * that a finding's line falls somewhere inside a hunk, so a plausible-but-off
+ * line survives it. Annotating removes the counting step entirely: the model
+ * copies a number instead of computing one.
+ *
+ * Deleted lines carry no new-file line number (they don't exist in the new
+ * file) and are left unprefixed.
+ */
+export function annotateDiffLines(raw: string): string {
+  const hadTrailingNewline = raw.endsWith('\n');
+  const lines = raw.split('\n');
+  if (hadTrailingNewline) lines.pop();
+
+  const out: string[] = [];
+  let newLineCursor = 0;
+  let inHunk = false;
+
+  for (const line of lines) {
+    const hh = line.match(/^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/);
+    if (hh) {
+      newLineCursor = Number(hh[3]);
+      inHunk = true;
+      out.push(line);
+      continue;
+    }
+    if (line.startsWith('diff --git') || line.startsWith('--- ') || line.startsWith('+++ ')) {
+      inHunk = false;
+      out.push(line);
+      continue;
+    }
+    if (!inHunk) {
+      out.push(line);
+      continue;
+    }
+    if (line.startsWith('-') && !line.startsWith('---')) {
+      out.push(line); // deletion: no new-side line to cite
+    } else {
+      out.push(`${newLineCursor}:${line}`);
+      newLineCursor++;
+    }
+  }
+
+  const result = out.join('\n');
+  return hadTrailingNewline ? `${result}\n` : result;
+}
+
 /** Extract the slice of the unified diff for a single file (for map chunks). */
 export function sliceDiff(diff: UnifiedDiff, path: string): string {
   const lines = diff.raw.split('\n');

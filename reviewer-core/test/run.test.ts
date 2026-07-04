@@ -154,6 +154,26 @@ describe('reviewPullRequest (engine)', () => {
     expect(outcome.assembly.user).toContain('## Intent (constrains your review)');
   });
 
+  it('annotates the diff sent to the model with absolute new-file line numbers (line-offset bug fix)', async () => {
+    const llm = new MockLLMProvider('openai', { structured: fixture });
+    const diff = await new MockGitClient().diff();
+
+    const outcome = await reviewPullRequest({
+      systemPrompt: 'security reviewer',
+      model: 'gpt-4.1',
+      diff,
+      llm,
+    });
+
+    // MockGitClient's diff hunk is `@@ -10,3 +10,4 @@`: line 10 (context),
+    // line 11 (the added `stripeKey` line), line 12 (context) — the model
+    // must see these exact absolute numbers, not have to count them itself.
+    expect(outcome.assembly.user).toContain('10:   port: 3000,');
+    expect(outcome.assembly.user).toContain('11:+  stripeKey: "sk_live_xxx",');
+    expect(outcome.assembly.user).toContain('12:   redisUrl: x,');
+    expect(outcome.assembly.user).toContain('## Diff to review');
+  });
+
   it('omits the intent section from the assembly when ReviewInput.intent is not supplied', async () => {
     const llm = new MockLLMProvider('openai', { structured: fixture });
     const diff = await new MockGitClient().diff();

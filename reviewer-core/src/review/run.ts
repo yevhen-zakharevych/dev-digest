@@ -9,7 +9,7 @@ import type {
 import { Review as ReviewSchema } from '@devdigest/shared';
 import { assemblePrompt } from '../prompt.js';
 import { groundFindings, groundingSummary } from '../grounding.js';
-import { reduceReviews, scoreFromFindings, sliceDiff } from './reduce.js';
+import { annotateDiffLines, reduceReviews, scoreFromFindings, sliceDiff } from './reduce.js';
 
 /**
  * reviewPullRequest — the review engine entry point.
@@ -148,13 +148,21 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
     task: input.task,
   };
 
+  // Absolute new-file line numbers, prefixed onto each kept line, so the model
+  // cites lines instead of counting them from the hunk header (the root cause
+  // of the off-by-leading-context-count bug grounding's range check can't see).
+  const annotatedRaw = annotateDiffLines(input.diff.raw);
+
   // Whole-diff assembly is the trace default; overwritten below for single-pass.
-  let assembly: PromptAssembly = assemblePrompt({ ...promptParts, diff: input.diff.raw }).assembly;
+  let assembly: PromptAssembly = assemblePrompt({ ...promptParts, diff: annotatedRaw }).assembly;
 
   const chunks =
     mode === 'map-reduce'
-      ? input.diff.files.map((f) => ({ label: f.path, diffText: sliceDiff(input.diff, f.path) }))
-      : [{ label: 'all files', diffText: input.diff.raw }];
+      ? input.diff.files.map((f) => ({
+          label: f.path,
+          diffText: annotateDiffLines(sliceDiff(input.diff, f.path)),
+        }))
+      : [{ label: 'all files', diffText: annotatedRaw }];
 
   emit(
     'info',

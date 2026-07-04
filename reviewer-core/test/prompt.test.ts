@@ -4,7 +4,7 @@
  * truncation, and ordering (before the diff).
  */
 import { describe, it, expect } from 'vitest';
-import { assemblePrompt, INTENT_RULE, wrapUntrusted } from '../src/prompt.js';
+import { assemblePrompt, DIFF_LINE_NUMBER_RULE, INTENT_RULE, wrapUntrusted } from '../src/prompt.js';
 
 function userOf(parts: Parameters<typeof assemblePrompt>[0]): string {
   const { messages } = assemblePrompt(parts);
@@ -120,6 +120,25 @@ describe('assemblePrompt — ## Intent (constrains your review)', () => {
 
     const withoutIntent = assemblePrompt({ system: 'sys', diff: 'D' });
     expect(withoutIntent.assembly.intent).toBeNull();
+  });
+});
+
+describe('assemblePrompt — ## Diff to review line-number rule', () => {
+  it('places DIFF_LINE_NUMBER_RULE OUTSIDE the <untrusted source="diff"> fence', () => {
+    const user = userOf({ system: 'sys', diff: '12:context\n13:+added' });
+
+    const ruleIndex = user.indexOf(DIFF_LINE_NUMBER_RULE);
+    const fenceOpenIndex = user.indexOf('<untrusted source="diff">');
+    const fenceCloseIndex = user.indexOf('</untrusted>', fenceOpenIndex);
+
+    expect(ruleIndex).toBeGreaterThan(-1);
+    expect(fenceOpenIndex).toBeGreaterThan(-1);
+    expect(ruleIndex).toBeLessThan(fenceOpenIndex);
+    expect(ruleIndex + DIFF_LINE_NUMBER_RULE.length).toBeLessThanOrEqual(fenceOpenIndex);
+
+    const dataIndex = user.indexOf('13:+added');
+    expect(dataIndex).toBeGreaterThan(fenceOpenIndex);
+    expect(dataIndex).toBeLessThan(fenceCloseIndex);
   });
 });
 
