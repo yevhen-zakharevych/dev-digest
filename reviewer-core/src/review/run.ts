@@ -9,7 +9,7 @@ import type {
 import { Review as ReviewSchema } from '@devdigest/shared';
 import { assemblePrompt } from '../prompt.js';
 import { groundFindings, groundingSummary } from '../grounding.js';
-import { reduceReviews, scoreFromFindings, sliceDiff } from './reduce.js';
+import { annotateDiffLines, reduceReviews, scoreFromFindings, sliceDiff } from './reduce.js';
 
 /**
  * reviewPullRequest — the review engine entry point.
@@ -71,6 +71,15 @@ export interface ReviewInput {
   /** PR author's description/body (untrusted; truncated + delimiter-wrapped in
       the prompt). Empty/undefined → section omitted. */
   prDescription?: string;
+  /**
+   * Pre-classified, server-derived intent string (title/body/linked issue/
+   * plan/hunk headers → cheap-model classification). Classification itself
+   * stays the CALLER's job (see the module-level comment above) — this
+   * engine only injects the already-computed summary into the prompt
+   * (untrusted; delimiter-wrapped downstream, with a trusted scope rule
+   * rendered outside the fence). Empty/undefined → section omitted.
+   */
+  intent?: string;
   /** Task framing line, e.g. "Review PR #482 …". */
   task?: string;
   /** Override the structured-output retry budget. */
@@ -135,16 +144,25 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
     callers: input.callers,
     repoMap: input.repoMap,
     prDescription: input.prDescription,
+    intent: input.intent,
     task: input.task,
   };
 
+  // Absolute new-file line numbers, prefixed onto each kept line, so the model
+  // cites lines instead of counting them from the hunk header (the root cause
+  // of the off-by-leading-context-count bug grounding's range check can't see).
+  const annotatedRaw = annotateDiffLines(input.diff.raw);
+
   // Whole-diff assembly is the trace default; overwritten below for single-pass.
-  let assembly: PromptAssembly = assemblePrompt({ ...promptParts, diff: input.diff.raw }).assembly;
+  let assembly: PromptAssembly = assemblePrompt({ ...promptParts, diff: annotatedRaw }).assembly;
 
   const chunks =
     mode === 'map-reduce'
-      ? input.diff.files.map((f) => ({ label: f.path, diffText: sliceDiff(input.diff, f.path) }))
-      : [{ label: 'all files', diffText: input.diff.raw }];
+      ? input.diff.files.map((f) => ({
+          label: f.path,
+          diffText: annotateDiffLines(sliceDiff(input.diff, f.path)),
+        }))
+      : [{ label: 'all files', diffText: annotatedRaw }];
 
   emit(
     'info',

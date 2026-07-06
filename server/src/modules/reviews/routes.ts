@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
-import { RunRequest } from '@devdigest/shared';
+import { PrIntentRecord, RunRequest, SmartDiffResponse } from '@devdigest/shared';
 import type { RunEvent } from '@devdigest/shared';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
@@ -14,6 +14,9 @@ import { ReviewService } from './service.js';
  *   GET    /runs/:id/trace                             → the single-document RunTrace
  *   GET    /pulls/:id/reviews                          → persisted reviews + findings for a PR
  *   POST   /findings/:id/(accept|dismiss)              → finding actions
+ *   POST   /pulls/:id/intent                           → recompute Intent Layer (L03), rate-limited
+ *   GET    /pulls/:id/intent                            → stored Intent | null (no LLM, cheap DB read)
+ *   GET    /pulls/:id/smart-diff                        → Smart Diff (L03), deterministic, no LLM
  */
 const FINDING_ACTIONS = ['accept', 'dismiss'] as const;
 export default async function reviewsRoutes(appBase: FastifyInstance) {
@@ -42,6 +45,17 @@ export default async function reviewsRoutes(appBase: FastifyInstance) {
     );
     return { pr_id: req.params.id, runs, reviews };
   });
+
+  // ---- Intent Layer (L03): force a fresh classify + persist ("Recompute") ---
+  // Same tight per-route limit as the review trigger: each call is an LLM run.
+  app.post(
+    '/pulls/:id/intent',
+    { schema: { params: IdParams }, config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+    async (req) => {
+      const { workspaceId } = await getContext(container, req);
+      return service.classifyIntent(workspaceId, req.params.id, req.log);
+    },
+  );
 
   // ---- SSE: live run events (replay buffer first, then live; ends on done) -
   // No rate limit: SSE is one long-lived connection, not burst traffic.
@@ -130,6 +144,28 @@ export default async function reviewsRoutes(appBase: FastifyInstance) {
     const { workspaceId } = await getContext(container, req);
     return service.reviewsForPull(workspaceId, req.params.id);
   });
+
+  // ---- Intent Layer (L03): cheap DB read, NO LLM call. Deliberately kept off
+  // the hot GET /pulls/:id detail path (see docs/plans/intent-layer.md §2). ----
+  app.get(
+    '/pulls/:id/intent',
+    { schema: { params: IdParams, response: { 200: PrIntentRecord.nullable() } } },
+    async (req) => {
+      const { workspaceId } = await getContext(container, req);
+      return service.getIntent(workspaceId, req.params.id);
+    },
+  );
+
+  // ---- Smart Diff (L03): compute-on-read, deterministic, NO LLM call. Composes
+  // already-persisted pr_files + the latest review's findings. -------------
+  app.get(
+    '/pulls/:id/smart-diff',
+    { schema: { params: IdParams, response: { 200: SmartDiffResponse } } },
+    async (req) => {
+      const { workspaceId } = await getContext(container, req);
+      return service.getSmartDiff(workspaceId, req.params.id);
+    },
+  );
 
   // ---- Delete a whole review run (one agent's pass) + its findings --------
   app.delete('/reviews/:id', { schema: { params: IdParams } }, async (req) => {

@@ -15,6 +15,8 @@
 export {
   assemblePrompt,
   wrapUntrusted,
+  INTENT_RULE,
+  DIFF_LINE_NUMBER_RULE,
   type PromptParts,
   type AssembledPrompt,
 } from './prompt.js';
@@ -31,8 +33,8 @@ export {
   type ParseResult,
 } from './llm/structured.js';
 
-// Map-reduce helpers (reduce partials, slice a file's diff).
-export { reduceReviews, sliceDiff } from './review/reduce.js';
+// Map-reduce helpers (reduce partials, slice a file's diff, annotate line numbers).
+export { reduceReviews, sliceDiff, annotateDiffLines } from './review/reduce.js';
 
 // The engine entry point: given (diff + resolved agent inputs + LLM) → grounded Review.
 export {

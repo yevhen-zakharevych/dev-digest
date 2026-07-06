@@ -25,5 +25,6 @@
       "@devdigest/reviewer-core/*": ["../reviewer-core/src/*"]
     }
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/**/*.test.ts"]
 }

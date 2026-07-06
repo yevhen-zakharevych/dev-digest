@@ -6,6 +6,7 @@ import { RunStatus } from "../RunStatus/RunStatus";
 import { RunHistory } from "../RunHistory/RunHistory";
 import { ReviewRunAccordion } from "../ReviewRunAccordion/ReviewRunAccordion";
 import { s } from "./styles";
+import { FindingTargetContext } from "../../_lib/findingTarget.context";
 import type { FindingRecord, ReviewRecord, RunSummary, PrCommit } from "@devdigest/shared";
 import type { UseMutationResult } from "@tanstack/react-query";
 
@@ -21,6 +22,14 @@ interface FindingsTabProps {
   /** owner/repo + head sha — used to deep-link a finding's file:line to GitHub. */
   repoFullName?: string | null;
   headSha?: string | null;
+  /** Smart-Diff deep-link target (from page.tsx's `?findingId=` search param +
+   *  in-memory nonce) — resolved here to the owning run, then fed into the
+   *  EXISTING `targetRunId`/`targetNonce` mechanism of `ReviewRunAccordion`. */
+  findingId?: string | null;
+  nonce?: number;
+  /** Called once the `findingId` target is resolved + revealed, so the parent
+   *  can strip `?findingId` from the URL (it has done its job). */
+  onFindingConsumed?: () => void;
   onOpenTrace: (id: string) => void;
   onDelete: (id: string) => void;
   onRunDone: () => void;
@@ -37,6 +46,9 @@ export function FindingsTab({
   cancelMutation,
   repoFullName,
   headSha,
+  findingId = null,
+  nonce = 0,
+  onFindingConsumed,
   onOpenTrace,
   onDelete,
   onRunDone,
@@ -81,6 +93,41 @@ export function FindingsTab({
     }
     return m;
   }, [runs]);
+
+  // Smart-Diff deep-link resolution: findingId -> finding.review_id ->
+  // review.id -> review.run_id (a finding carries no run_id of its own).
+  const resolvedTargetRunId = React.useMemo(() => {
+    if (!findingId) return null;
+    const finding = runs.flatMap((r) => r.findings).find((f) => f.id === findingId);
+    if (!finding) return null;
+    const review = runs.find((r) => r.id === finding.review_id);
+    return review?.run_id ?? null;
+  }, [findingId, runs]);
+
+  // Feed the resolved run into the SAME `targetRunId`/`targetNonce` the Timeline
+  // uses (`handleGoToReview` above) — reuses ReviewRunAccordion's existing
+  // force-open+scroll, no new accordion mechanism. Computed directly during
+  // render (not via a `useEffect` + `setTarget`) so ReviewRunAccordion sees the
+  // resolved run in the SAME commit as FindingCard sees its `targetFindingId`.
+  // An extra render round trip here would let ReviewRunAccordion's own
+  // scrollIntoView (to its accordion root) fire a whole render AFTER
+  // FindingCard's precise scroll to the specific finding, clobbering it —
+  // always landing on the accordion's default-expanded first card instead.
+  const effectiveTargetRunId = resolvedTargetRunId ?? target?.runId ?? null;
+  const effectiveTargetNonce = resolvedTargetRunId ? nonce : target?.n ?? 0;
+
+  // Strip ?findingId from the URL once the target run is resolved+revealed.
+  // Small delay so a FindingCard in an accordion that only just opened has
+  // mounted and consumed the target (via FindingTargetContext) before the
+  // param clears — clearing it does NOT collapse/unhighlight the card (that
+  // state is internal + one-way), it just tidies the URL.
+  React.useEffect(() => {
+    if (resolvedTargetRunId) {
+      const timer = setTimeout(() => onFindingConsumed?.(), 600);
+      return () => clearTimeout(timer);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [findingId, nonce, resolvedTargetRunId]);
 
   return (
     <section>
@@ -165,20 +212,23 @@ export function FindingsTab({
           />
         )
       ) : (
-        prId &&
-        runs.map((review, i) => (
-          <ReviewRunAccordion
-            key={review.id}
-            review={review}
-            run={prRuns?.find((r) => r.run_id === review.run_id) ?? null}
-            prId={prId}
-            defaultOpen={i === 0}
-            repoFullName={repoFullName}
-            headSha={headSha}
-            targetRunId={target?.runId ?? null}
-            targetNonce={target?.n ?? 0}
-          />
-        ))
+        prId && (
+          <FindingTargetContext.Provider value={{ id: findingId, nonce }}>
+            {runs.map((review, i) => (
+              <ReviewRunAccordion
+                key={review.id}
+                review={review}
+                run={prRuns?.find((r) => r.run_id === review.run_id) ?? null}
+                prId={prId}
+                defaultOpen={i === 0}
+                repoFullName={repoFullName}
+                headSha={headSha}
+                targetRunId={effectiveTargetRunId}
+                targetNonce={effectiveTargetNonce}
+              />
+            ))}
+          </FindingTargetContext.Provider>
+        )
       )}
     </section>
   );

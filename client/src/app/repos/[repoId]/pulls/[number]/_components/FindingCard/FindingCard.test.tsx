@@ -7,6 +7,10 @@ import { FindingCard } from "./FindingCard";
 
 afterEach(cleanup);
 
+// jsdom doesn't implement scrollIntoView (used by the deep-link effect below,
+// mirroring ReviewRunAccordion.tsx:54) — stub it so the effect doesn't throw.
+Element.prototype.scrollIntoView = vi.fn();
+
 const FINDING: FindingRecord = {
   id: "f1",
   severity: "CRITICAL",
@@ -56,5 +60,54 @@ describe("FindingCard (smoke, both themes)", () => {
     expect(onAction).toHaveBeenCalledWith("accept");
     fireEvent.click(screen.getByText("Dismiss"));
     expect(onAction).toHaveBeenCalledWith("dismiss");
+  });
+});
+
+describe("FindingCard — Smart-Diff deep-link (targetFindingId/targetNonce)", () => {
+  it("force-expands and highlights when targetFindingId matches f.id, even without defaultExpanded", () => {
+    renderWithIntl(<FindingCard f={FINDING} onAction={() => {}} targetFindingId="f1" targetNonce={1} />);
+    // Expanded: the rationale (only rendered when expanded) is now visible.
+    expect(screen.getByText("Move the key to an environment variable.")).toBeInTheDocument();
+    // Highlighted: same visual treatment `focused` uses (boxShadow via sevColor).
+    const card = screen.getByText("Hardcoded Stripe secret key").closest("[data-finding-id]") as HTMLElement;
+    expect(card.style.boxShadow).not.toBe("none");
+  });
+
+  it("does NOT force-expand when targetFindingId does not match f.id", () => {
+    renderWithIntl(<FindingCard f={FINDING} onAction={() => {}} targetFindingId="other-id" targetNonce={1} />);
+    expect(screen.queryByText("Move the key to an environment variable.")).not.toBeInTheDocument();
+    const card = screen.getByText("Hardcoded Stripe secret key").closest("[data-finding-id]") as HTMLElement;
+    expect(card.style.boxShadow).toBe("none");
+  });
+
+  it("re-triggers the expand on a bumped targetNonce for the same id (re-click)", () => {
+    const { rerender } = renderWithIntl(
+      <FindingCard f={FINDING} onAction={() => {}} targetFindingId={null} targetNonce={0} />,
+    );
+    expect(screen.queryByText("Move the key to an environment variable.")).not.toBeInTheDocument();
+
+    rerender(
+      <NextIntlClientProvider locale="en" messages={{ prReview: messages }}>
+        <FindingCard f={FINDING} onAction={() => {}} targetFindingId="f1" targetNonce={1} />
+      </NextIntlClientProvider>,
+    );
+    expect(screen.getByText("Move the key to an environment variable.")).toBeInTheDocument();
+  });
+
+  it("defers its scrollIntoView call to a macrotask, so a same-tick parent scroll (ReviewRunAccordion's own) can't clobber it", () => {
+    const scrollSpy = vi.fn();
+    Element.prototype.scrollIntoView = scrollSpy;
+    vi.useFakeTimers();
+    try {
+      renderWithIntl(<FindingCard f={FINDING} onAction={() => {}} targetFindingId="f1" targetNonce={1} />);
+      // Still pending — a same-tick ancestor scroll (e.g. ReviewRunAccordion's
+      // own scrollIntoView on its root) would run and finish before this fires.
+      expect(scrollSpy).not.toHaveBeenCalled();
+      vi.runAllTimers();
+      expect(scrollSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+      Element.prototype.scrollIntoView = vi.fn();
+    }
   });
 });

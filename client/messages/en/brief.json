@@ -10,6 +10,10 @@
   "overlap": "{count} overlap",
   "unavailable": "Brief not available yet.",
   "unavailableHint": "Run a review or open the PR to compute it.",
+  "inScope": "In scope",
+  "outOfScope": "Out of scope",
+  "recompute": "Recompute",
+  "recomputing": "Recomputing…",
   "why": {
     "title": "git-why",
     "blame": "blame",

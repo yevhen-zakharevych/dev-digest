@@ -7,6 +7,7 @@ import { useTranslations } from "next-intl";
 import { Toggle, EmptyState } from "@devdigest/ui";
 import type { FindingRecord } from "@devdigest/shared";
 import { FindingCard } from "../FindingCard/FindingCard";
+import { FindingTargetContext } from "../../_lib/findingTarget.context";
 import { useFindingAction } from "../../../../../../../lib/hooks/reviews";
 import { KEY_TO_ACTION } from "./constants";
 import { visibleFindings } from "./helpers";
@@ -17,18 +18,39 @@ export function FindingsPanel({
   prId,
   repoFullName,
   headSha,
+  targetFindingId,
+  targetNonce,
 }: {
   findings: FindingRecord[];
   prId: string;
   repoFullName?: string | null;
   headSha?: string | null;
+  /** Smart-Diff deep-link target — id of the finding to force-expand +
+   *  highlight in the matching `FindingCard`. Falls back to the
+   *  `FindingTargetContext` (set by `FindingsTab`) when not passed explicitly,
+   *  since the real render path is nested inside `ReviewRunAccordion`, which
+   *  does not forward arbitrary props. */
+  targetFindingId?: string | null;
+  targetNonce?: number;
 }) {
   const t = useTranslations("prReview");
   const action = useFindingAction();
+  const ctxTarget = React.useContext(FindingTargetContext);
+  const effectiveTargetId = targetFindingId ?? ctxTarget.id;
+  const effectiveTargetNonce = targetNonce ?? ctxTarget.nonce;
   const [hideLow, setHideLow] = React.useState(false);
   const [focusIdx, setFocusIdx] = React.useState(0);
 
-  const shown = React.useMemo(() => visibleFindings(findings, hideLow), [findings, hideLow]);
+  const shown = React.useMemo(() => {
+    const base = visibleFindings(findings, hideLow);
+    // The deep-linked target must stay visible even if "hide low confidence"
+    // would otherwise drop it (docs/plans/smart-diff.md §5 Deep-link).
+    if (effectiveTargetId && !base.some((f) => f.id === effectiveTargetId)) {
+      const target = findings.find((f) => f.id === effectiveTargetId);
+      if (target) return [target, ...base];
+    }
+    return base;
+  }, [findings, hideLow, effectiveTargetId]);
 
   // j/k navigation + a/d shortcuts on the focused finding (keyboard).
   React.useEffect(() => {
@@ -67,6 +89,8 @@ export function FindingsPanel({
               pending={action.isPending}
               repoFullName={repoFullName}
               headSha={headSha}
+              targetFindingId={effectiveTargetId}
+              targetNonce={effectiveTargetNonce}
               onAction={(act) => action.mutate({ findingId: f.id, action: act, prId })}
             />
           ))
