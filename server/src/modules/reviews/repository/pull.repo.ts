@@ -18,6 +18,27 @@ export async function getPull(
   return row;
 }
 
+/** PR lookup by (repo, number) — backed by unique index `pr_repo_number_uq`. */
+export async function getPullByNumber(
+  db: Db,
+  workspaceId: string,
+  repoId: string,
+  number: number,
+): Promise<PullRow | undefined> {
+  const [row] = await db
+    .select()
+    .from(t.pullRequests)
+    .where(
+      and(
+        eq(t.pullRequests.workspaceId, workspaceId),
+        eq(t.pullRequests.repoId, repoId),
+        eq(t.pullRequests.number, number),
+      ),
+    )
+    .limit(1);
+  return row;
+}
+
 export async function getRepo(
   db: Db,
   repoId: string,
