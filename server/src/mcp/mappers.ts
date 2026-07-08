@@ -7,11 +7,19 @@
  * `reviewByRunId` repository read) or the already-DTO-mapped
  * `ReviewDtoFinding` (snake_case, from `ReviewService.reviewsForPull`).
  */
-import type { BlastRadius, ChangedSymbol, DownstreamImpact, Finding, Severity } from '@devdigest/shared';
-import type { BlastResult } from '../modules/repo-intel/types.js';
+import type { Finding, Severity } from '@devdigest/shared';
 import { findingRowToDto, type ReviewDtoFinding } from '../modules/reviews/helpers.js';
 import type { FindingRow } from '../modules/reviews/repository.js';
 import type { ConciseFinding, DetailedFinding } from './schemas.js';
+
+/**
+ * `blastResultToContract`/`emptyBlastRadius` (L04) now live in
+ * `modules/blast/contract.ts` — a neutral leaf so the HTTP blast route
+ * doesn't have to import from this `mcp/` transport layer. Re-exported here
+ * unchanged so existing MCP imports (and `test/mcp-mappers.test.ts`) don't
+ * need to change their import path.
+ */
+export { blastResultToContract, emptyBlastRadius } from '../modules/blast/contract.js';
 
 export type FindingLike = FindingRow | ReviewDtoFinding;
 
@@ -104,87 +112,5 @@ export function paginateFindings<T extends { severity: Severity }>(
     offset,
     has_more,
     next_offset: has_more ? offset + items.length : null,
-  };
-}
-
-/** A valid, empty `BlastRadius` — the stub result `get_blast_radius` returns today. */
-export function emptyBlastRadius(summary: string): BlastRadius {
-  return {
-    changed_symbols: [],
-    downstream: [],
-    summary,
-  };
-}
-
-/**
- * TODO(L04-homework): wire this in for real in `get-blast-radius.ts` —
- * resolve the PR's changed files (`ReviewRepository.getPrFiles(prId)`) →
- * `container.repoIntel.getBlastRadius(repoId, changedFiles)` (returns
- * `BlastResult`) → `blastResultToContract(result)`. Fully implemented here so
- * that swap is a one-liner.
- *
- * Maps `BlastResult` (repo-intel's internal, camelCase shape) to the
- * `BlastRadius` wire contract: `changedSymbols` map 1:1 to `changed_symbols`;
- * `callers[]` are grouped by `viaSymbol` into `downstream[]` entries. When
- * `factsByFile` is present (the non-degraded path), each group's
- * `endpoints_affected`/`crons_affected` are the union of facts for the files
- * its callers live in (per the port's own doc comment,
- * `repo-intel/types.ts:76`: "consumers can attribute endpoints/crons to the
- * changed symbol whose callers live in that file"). When `factsByFile` is
- * absent (degraded/ripgrep path), there is no per-symbol attribution
- * available, so the flat `impactedEndpoints` list is surfaced on every group
- * rather than silently dropped.
- */
-export function blastResultToContract(result: BlastResult): BlastRadius {
-  const changed_symbols: ChangedSymbol[] = result.changedSymbols.map((s) => ({
-    name: s.name,
-    file: s.file,
-    kind: s.kind,
-  }));
-
-  const groups = new Map<string, DownstreamImpact>();
-  const filesBySymbol = new Map<string, Set<string>>();
-
-  for (const caller of result.callers) {
-    let group = groups.get(caller.viaSymbol);
-    if (!group) {
-      group = { symbol: caller.viaSymbol, callers: [], endpoints_affected: [], crons_affected: [] };
-      groups.set(caller.viaSymbol, group);
-      filesBySymbol.set(caller.viaSymbol, new Set());
-    }
-    group.callers.push({ name: caller.symbol, file: caller.file, line: caller.line });
-    filesBySymbol.get(caller.viaSymbol)!.add(caller.file);
-  }
-
-  if (result.factsByFile) {
-    const factsByFile = result.factsByFile;
-    for (const [viaSymbol, files] of filesBySymbol) {
-      const group = groups.get(viaSymbol);
-      if (!group) continue;
-      const endpoints = new Set<string>();
-      const crons = new Set<string>();
-      for (const file of files) {
-        const facts = factsByFile[file];
-        if (!facts) continue;
-        for (const e of facts.endpoints) endpoints.add(e);
-        for (const c of facts.crons) crons.add(c);
-      }
-      group.endpoints_affected = [...endpoints];
-      group.crons_affected = [...crons];
-    }
-  } else if (result.impactedEndpoints.length > 0) {
-    for (const group of groups.values()) {
-      group.endpoints_affected = [...result.impactedEndpoints];
-    }
-  }
-
-  const summary = result.degraded
-    ? `blast radius degraded (${result.reason ?? 'unknown reason'}) — ${changed_symbols.length} changed symbol(s) mapped without full downstream data`
-    : `${changed_symbols.length} changed symbol(s) affect ${groups.size} downstream caller group(s)`;
-
-  return {
-    changed_symbols,
-    downstream: [...groups.values()],
-    summary,
   };
 }

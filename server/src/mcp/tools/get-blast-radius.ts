@@ -1,20 +1,22 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Container } from '../../platform/container.js';
 import { resolveWorkspaceId, resolveRepoBySlug, resolvePrId } from '../resolve.js';
-import { emptyBlastRadius } from '../mappers.js';
+import { blastResultToContract } from '../mappers.js';
 import { GetBlastRadiusInput, BlastRadius } from '../schemas.js';
 
 /**
- * `get_blast_radius` — read-only, **deliberate stub** (see
- * docs/plans/L04-devdigest-mcp.md §5 tool #5, §5.1). Resolves its inputs
- * (repo slug → PR) so a bad `repo`/`pr` still "leads onward" to an
- * actionable error, but always returns an EMPTY, contract-valid
- * `BlastRadius` — the real implementation is L04 homework (see the
- * `TODO(L04-homework)` block below).
+ * `get_blast_radius` — read-only. Resolves its inputs (repo slug → PR) so a
+ * bad `repo`/`pr` still "leads onward" to an actionable error, then serves
+ * the real blast radius (changed symbols → callers → impacted endpoints/
+ * crons) from the repo-intel index via the shared `blastResultToContract`
+ * mapper (docs/plans/L04-blast-radius.md D4) — the same path the HTTP
+ * `GET /pulls/:id/blast` route uses, so behavior is identical.
  *
- * Onion: the executed path only calls `resolveWorkspaceId` /
- * `resolveRepoBySlug` / `resolvePrId` (resolvers) plus the pure
- * `emptyBlastRadius` mapper — no direct DB/LLM access.
+ * Onion: the executed path calls `resolveWorkspaceId` / `resolveRepoBySlug` /
+ * `resolvePrId` (resolvers), `container.reviewRepo.getPrFiles` +
+ * `container.repoIntel.getBlastRadius` (application-layer facades), then the
+ * pure `blastResultToContract` mapper — no direct DB/LLM access from this
+ * transport file itself.
  */
 export function registerGetBlastRadius(server: McpServer, container: Container): void {
   server.registerTool(
@@ -22,7 +24,7 @@ export function registerGetBlastRadius(server: McpServer, container: Container):
     {
       title: 'Get blast radius',
       description:
-        "Return the blast radius (impact map) of a pull request: which symbols changed and what downstream code they affect. Read-only. NOTE: this is currently a stub and returns an EMPTY blast radius — the full implementation is L04 homework. Does NOT modify anything.",
+        'Return the blast radius (impact map) of a pull request: which symbols changed and what downstream code they affect (callers, ranked, capped 20 per symbol) plus impacted HTTP endpoints/cron jobs. Read-only. Does NOT modify anything.',
       inputSchema: GetBlastRadiusInput.shape,
       outputSchema: BlastRadius.shape,
       annotations: {
@@ -53,29 +55,17 @@ export function registerGetBlastRadius(server: McpServer, container: Container):
         return errorResult(`PR #${pr} not found in ${repo}`);
       }
 
-      // ---------------------------------------------------------------------
-      // TODO(L04-homework): swap the stub body above this line for the real
-      // implementation — this is a localized, one-block swap:
-      //
-      //   const changedFiles = (await container.reviewRepo.getPrFiles(prResult.pull.id))
-      //     .map((f) => f.path); // adjust field name to the actual PrFile row shape
-      //   const result = await container.repoIntel.getBlastRadius(
-      //     repoResult.repo.id,
-      //     changedFiles,
-      //   ); // `repo-intel/service.ts:220`, returns `BlastResult`
-      //   const blastRadius = blastResultToContract(result); // `mappers.ts`
-      //
-      // then return `structuredContent: blastRadius` (plus a text summary)
-      // instead of the `emptyBlastRadius(...)` stub below.
-      // ---------------------------------------------------------------------
-
-      const blastRadius = emptyBlastRadius('blast radius not yet implemented (L04 homework)');
+      const changedFiles = (await container.reviewRepo.getPrFiles(prResult.pull.id)).map(
+        (f) => f.path,
+      );
+      const result = await container.repoIntel.getBlastRadius(repoResult.repo.id, changedFiles);
+      const blastRadius = blastResultToContract(result);
 
       return {
         content: [
           {
             type: 'text' as const,
-            text: 'get_blast_radius is currently a stub (L04 homework) — returning an empty blast radius. No symbols or downstream impact were analyzed.',
+            text: blastRadius.summary,
           },
         ],
         structuredContent: blastRadius,

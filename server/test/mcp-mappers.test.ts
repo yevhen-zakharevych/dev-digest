@@ -272,4 +272,85 @@ describe('blastResultToContract', () => {
     expect(contract.downstream).toEqual([]);
     expect(() => BlastRadius.parse(contract)).not.toThrow();
   });
+
+  describe('per-symbol caller cap (docs/plans/L04-blast-radius.md D2)', () => {
+    it('caps a single viaSymbol group at 20 callers, keeping the highest-rank (already-sorted) ones', () => {
+      // Mirrors the facade's contract: result.callers arrives already
+      // rank-sorted DESC (tryPersistentBlast sorts before returning).
+      const callers = Array.from({ length: 35 }, (_, i) => ({
+        file: `src/caller${i}.ts`,
+        symbol: `caller${i}`,
+        viaSymbol: 'doFoo',
+        line: i + 1,
+        rank: 35 - i, // rank 35 (index 0) is highest
+      }));
+      const result: BlastResult = {
+        changedSymbols: [{ file: 'src/foo.ts', name: 'doFoo', kind: 'function' }],
+        callers,
+        impactedEndpoints: [],
+      };
+
+      const contract = blastResultToContract(result);
+      expect(() => BlastRadius.parse(contract)).not.toThrow();
+      expect(contract.downstream).toHaveLength(1);
+      expect(contract.downstream[0].callers).toHaveLength(20);
+      // The top-20 highest-rank callers (index 0..19) were kept, not an
+      // arbitrary/last slice.
+      expect(contract.downstream[0].callers.map((c) => c.name)).toEqual(
+        Array.from({ length: 20 }, (_, i) => `caller${i}`),
+      );
+    });
+
+    it('each of two viaSymbol groups gets its own independent 20-cap (one symbol cannot starve another)', () => {
+      const fooCallers = Array.from({ length: 25 }, (_, i) => ({
+        file: `src/foo-caller${i}.ts`,
+        symbol: `fooCaller${i}`,
+        viaSymbol: 'doFoo',
+        line: i + 1,
+        rank: 1,
+      }));
+      const barCallers = Array.from({ length: 3 }, (_, i) => ({
+        file: `src/bar-caller${i}.ts`,
+        symbol: `barCaller${i}`,
+        viaSymbol: 'doBar',
+        line: i + 1,
+        rank: 1,
+      }));
+      const result: BlastResult = {
+        changedSymbols: [
+          { file: 'src/foo.ts', name: 'doFoo', kind: 'function' },
+          { file: 'src/bar.ts', name: 'doBar', kind: 'function' },
+        ],
+        callers: [...fooCallers, ...barCallers],
+        impactedEndpoints: [],
+      };
+
+      const contract = blastResultToContract(result);
+      const foo = contract.downstream.find((d) => d.symbol === 'doFoo');
+      const bar = contract.downstream.find((d) => d.symbol === 'doBar');
+      expect(foo?.callers).toHaveLength(20); // capped from 25
+      expect(bar?.callers).toHaveLength(3); // untouched — well under the cap
+    });
+
+    it('degraded path (no factsByFile) still surfaces impactedEndpoints on a capped group', () => {
+      const callers = Array.from({ length: 22 }, (_, i) => ({
+        file: `src/caller${i}.ts`,
+        symbol: `caller${i}`,
+        viaSymbol: 'doFoo',
+        line: i + 1,
+        rank: 0,
+      }));
+      const result: BlastResult = {
+        changedSymbols: [{ file: 'src/foo.ts', name: 'doFoo', kind: 'function' }],
+        callers,
+        impactedEndpoints: ['GET /foo'],
+        degraded: true,
+        reason: 'index_partial',
+      };
+
+      const contract = blastResultToContract(result);
+      expect(contract.downstream[0].callers).toHaveLength(20);
+      expect(contract.downstream[0].endpoints_affected).toEqual(['GET /foo']);
+    });
+  });
 });

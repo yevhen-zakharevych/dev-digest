@@ -48,6 +48,7 @@ import {
   INDEX_JOB_KIND,
   INDEXER_VERSION,
   MAX_CALLERS_PER_SYMBOL,
+  MAX_CALLERS_TOTAL,
   REFRESH_JOB_KIND,
   RESYNC_JOB_KIND,
   SUPPORTED_EXT,
@@ -381,9 +382,14 @@ export class RepoIntelService implements RepoIntel {
       for (const e of f.endpoints) endpoints.add(e);
     }
 
+    // Safety ceiling ONLY — the real per-changed-symbol UX cap
+    // (`MAX_CALLERS_PER_SYMBOL`) is applied downstream in
+    // `blastResultToContract`, where callers are actually grouped by
+    // `viaSymbol`. Slicing globally here (pre-grouping) would let one
+    // high-rank symbol's callers crowd out every other symbol's budget.
     return {
       changedSymbols,
-      callers: callers.slice(0, MAX_CALLERS_PER_SYMBOL),
+      callers: callers.slice(0, MAX_CALLERS_TOTAL),
       impactedEndpoints: [...endpoints],
       factsByFile,
       degraded: false,

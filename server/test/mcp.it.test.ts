@@ -305,19 +305,70 @@ d('MCP server (L04) — 5 tools, run→poll→findings (Testcontainers pg)', () 
     );
   });
 
-  // ---- (f) get_blast_radius — deliberate empty stub, still contract-valid ----
-  it('get_blast_radius returns a BlastRadius-valid empty stub', async () => {
+  // ---- (f) get_blast_radius — real implementation (L04), shares the facade +
+  // blastResultToContract mapper with GET /pulls/:id/blast (docs/plans/
+  // L04-blast-radius.md D4) ----
+  it('get_blast_radius returns the real, non-empty blast radius from the persistent index', async () => {
     const { repo, pr } = await setupRepoAndPr(pg.handle.db, workspaceId);
+
+    // Changed file + a resolved cross-file caller, mirroring `blast.it.test.ts`'s
+    // seedIndex helper (kept inline here — this file owns its own fixtures).
+    await pg.handle.db.insert(t.prFiles).values({ prId: pr.id, path: 'src/foo.ts', additions: 3, deletions: 0 });
+    await pg.handle.db.insert(t.symbols).values([
+      { repoId: repo.id, path: 'src/foo.ts', name: 'doFoo', kind: 'function', line: 1, endLine: 3, exported: true },
+      { repoId: repo.id, path: 'src/routes/foo-route.ts', name: 'handler', kind: 'function', line: 1, endLine: 5, exported: false },
+    ]);
+    await pg.handle.db.insert(t.references).values({
+      repoId: repo.id,
+      fromPath: 'src/routes/foo-route.ts',
+      toSymbol: 'doFoo',
+      line: 3,
+      declFile: 'src/foo.ts',
+    });
+    await pg.handle.db.insert(t.fileRank).values({
+      repoId: repo.id,
+      filePath: 'src/routes/foo-route.ts',
+      pagerank: 1,
+      hotness: 0,
+      rank: 1,
+      percentile: 90,
+    });
+    await pg.handle.db.insert(t.fileFacts).values({
+      repoId: repo.id,
+      filePath: 'src/routes/foo-route.ts',
+      endpoints: ['GET /foo'],
+      crons: [],
+    });
+    await pg.handle.db.insert(t.repoIndexState).values({
+      repoId: repo.id,
+      lastIndexedSha: 'deadbeef01',
+      indexerVersion: 2,
+      status: 'full',
+      filesIndexed: 2,
+      filesSkipped: 0,
+      stats: {},
+    });
 
     const result = await handler('get_blast_radius')({ repo: repo.fullName, pr: pr.number });
 
     expect(result.isError).toBeFalsy();
     expect(() => BlastRadius.parse(result.structuredContent)).not.toThrow();
+    // Exact toEqual (not just shape-valid) — catches a wrong summary/caller
+    // mapping the same way `server/INSIGHTS.md:191(c)` already documents for
+    // this tool's previous stub assertion.
     expect(result.structuredContent).toEqual({
-      changed_symbols: [],
-      downstream: [],
-      summary: 'blast radius not yet implemented (L04 homework)',
+      changed_symbols: [{ name: 'doFoo', file: 'src/foo.ts', kind: 'function' }],
+      downstream: [
+        {
+          symbol: 'doFoo',
+          callers: [{ name: 'handler', file: 'src/routes/foo-route.ts', line: 3 }],
+          endpoints_affected: ['GET /foo'],
+          crons_affected: [],
+        },
+      ],
+      summary: '1 changed symbol(s) affect 1 downstream caller group(s)',
     });
+    expect(result.content[0]!.text).toBe(result.structuredContent!.summary);
   });
 
   // ---- error-leads-onward on a read tool: missing PR ----

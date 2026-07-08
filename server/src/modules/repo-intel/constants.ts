@@ -26,8 +26,25 @@ export const EXCLUDED_DIRS = [
 ] as const;
 
 // --- Read-time limits -------------------------------------------------------
-/** [T1] Caller fan-out cap per changed symbol (ORDER BY rank DESC LIMIT N). */
+/**
+ * [T1/L04] Caller fan-out cap PER CHANGED SYMBOL. Applied where the callers
+ * are actually grouped by `viaSymbol` — `blast-contract.ts`'s
+ * `blastResultToContract` (L04) — NOT in the facade, which would otherwise let
+ * one high-rank symbol's callers crowd out every other symbol's budget. Also
+ * reused as `getCallerSignatures`'s default overall `limit` (a different,
+ * unrelated cap — see that method's doc comment).
+ */
 export const MAX_CALLERS_PER_SYMBOL = 20;
+
+/**
+ * [L04] Safety ceiling on TOTAL callers `tryPersistentBlast` returns across
+ * ALL changed symbols combined, applied AFTER the global rank sort — generous
+ * enough that per-symbol data reliably survives into `blastResultToContract`,
+ * which applies the real per-symbol UX cap (`MAX_CALLERS_PER_SYMBOL`). Exists
+ * only to bound a pathological fan-out (e.g. a changed file with dozens of
+ * widely-called symbols), not as a UX-facing limit.
+ */
+export const MAX_CALLERS_TOTAL = 200;
 
 /**
  * [T1] Bumped whenever the AST extractor or symbol schema changes. A mismatch
