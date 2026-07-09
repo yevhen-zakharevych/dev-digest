@@ -30,7 +30,10 @@ export class BlastService {
     const files = await reviewRepo.getPrFiles(prId);
     const changedFiles = files.map((f) => f.path);
 
-    const result = await repoIntel.getBlastRadius(pull.repoId, changedFiles);
-    return blastResultToContract(result);
+    const [result, prior_prs] = await Promise.all([
+      repoIntel.getBlastRadius(pull.repoId, changedFiles),
+      reviewRepo.priorPrsTouchingFiles(workspaceId, pull.repoId, prId, changedFiles),
+    ]);
+    return { ...blastResultToContract(result), prior_prs };
   }
 }

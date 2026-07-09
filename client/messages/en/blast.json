@@ -43,5 +43,8 @@
     "title": "About this blast radius",
     "dynamicEdges": "Dynamically-dispatched, DI-wired, or reflection-based callers may be missing from this list.",
     "endpointsBound": "Only endpoints reachable within one call hop of a caller are shown — more may exist further along the call chain."
+  },
+  "priorPrs": {
+    "title": "Prior PRs touching these files"
   }
 }

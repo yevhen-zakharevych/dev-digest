@@ -10,6 +10,11 @@ import * as t from '../src/db/schema.js';
  * via `GET /pulls/:id/blast`. DB-backed ⇒ `.it.test.ts` (testcontainers
  * Postgres). Compute-on-read from the persistent repo-intel index — NO LLM
  * call.
+ *
+ * (L04, task T-SERVER-IT) also covers `prior_prs` — `priorPrsTouchingFiles`
+ * (`modules/reviews/repository/pull.repo.ts`), a plain `pull_requests`/
+ * `pr_files` read with NO repo-intel index involved (no `symbols`/
+ * `references`/`file_rank`/`repo_index_state` needed for these cases).
  */
 
 const hasDocker = await dockerAvailable();
@@ -119,6 +124,52 @@ async function seedIndex(
   });
 }
 
+let priorPrSeq = 5000;
+
+/**
+ * Insert an "other" PR (distinct from the current PR under test) directly via
+ * `pull_requests` + `pr_files` rows, for `prior_prs` overlap testing. No
+ * repo-intel index seeding needed — `priorPrsTouchingFiles` only reads these
+ * two tables. Each call gets a fresh PR `number` (unique per repo).
+ */
+async function insertOtherPr(
+  db: PgFixture['handle']['db'],
+  workspaceId: string,
+  repoId: string,
+  opts: {
+    title?: string;
+    author?: string;
+    files: string[];
+    updatedAt?: Date;
+    openedAt?: Date;
+  },
+) {
+  const number = priorPrSeq++;
+  const [pr] = await db
+    .insert(t.pullRequests)
+    .values({
+      workspaceId,
+      repoId,
+      number,
+      title: opts.title ?? `Other PR #${number}`,
+      author: opts.author ?? 'other.author',
+      branch: `feat/other-${number}`,
+      base: 'main',
+      headSha: `sha-${number}`,
+      filesCount: opts.files.length,
+      status: 'needs_review',
+      updatedAt: opts.updatedAt,
+      openedAt: opts.openedAt,
+    })
+    .returning();
+  if (opts.files.length > 0) {
+    await db
+      .insert(t.prFiles)
+      .values(opts.files.map((path) => ({ prId: pr!.id, path, additions: 1, deletions: 0 })));
+  }
+  return pr!;
+}
+
 d('Blast Radius (L04) — service + routes (Testcontainers pg)', () => {
   let pg: PgFixture;
   let workspaceId: string;
@@ -220,5 +271,159 @@ d('Blast Radius (L04) — service + routes (Testcontainers pg)', () => {
     expect(res.statusCode).toBe(404);
 
     await app.close();
+  });
+
+  describe('prior_prs (T-SERVER-IT: prior PRs touching the same files)', () => {
+    it('includes only other PRs with ≥1 overlapping file, excludes self, and files_overlap is the exact intersection', async () => {
+      const app = await appWith();
+      const { repo, pr } = await setupRepoAndPr(pg.handle.db, workspaceId, [
+        'src/a.ts',
+        'src/b.ts',
+        'src/c.ts',
+      ]);
+
+      const overlapping = await insertOtherPr(pg.handle.db, workspaceId, repo.id, {
+        title: 'Touches a and an unrelated file',
+        author: 'alice',
+        files: ['src/a.ts', 'src/z.ts'], // only src/a.ts overlaps the current PR
+        updatedAt: new Date('2026-01-01T00:00:00Z'),
+      });
+      await insertOtherPr(pg.handle.db, workspaceId, repo.id, {
+        title: 'No overlap at all',
+        author: 'bob',
+        files: ['src/q.ts'],
+        updatedAt: new Date('2026-01-02T00:00:00Z'),
+      });
+
+      const res = await app.inject({ method: 'GET', url: `/pulls/${pr.id}/blast` });
+      expect(res.statusCode).toBe(200);
+      const blast = res.json();
+
+      // Exact length + exact shape — not "contains" — so a broken self-exclusion
+      // (which would add a 2nd entry, the current PR, with full overlap) or a
+      // broken overlap filter (which would add the zero-overlap PR) both fail.
+      expect(blast.prior_prs).toHaveLength(1);
+      expect(blast.prior_prs[0]).toEqual({
+        pr_number: overlapping.number,
+        title: 'Touches a and an unrelated file',
+        author: 'alice',
+        merged_at: '2026-01-01T00:00:00.000Z',
+        files_overlap: ['src/a.ts'],
+        notes: '',
+      });
+
+      await app.close();
+    });
+
+    it('orders prior_prs by recency (updatedAt) descending', async () => {
+      const app = await appWith();
+      const { repo, pr } = await setupRepoAndPr(pg.handle.db, workspaceId, ['src/shared.ts']);
+
+      const older = await insertOtherPr(pg.handle.db, workspaceId, repo.id, {
+        files: ['src/shared.ts'],
+        updatedAt: new Date('2026-01-01T00:00:00Z'),
+      });
+      const newest = await insertOtherPr(pg.handle.db, workspaceId, repo.id, {
+        files: ['src/shared.ts'],
+        updatedAt: new Date('2026-03-01T00:00:00Z'),
+      });
+      const middle = await insertOtherPr(pg.handle.db, workspaceId, repo.id, {
+        files: ['src/shared.ts'],
+        updatedAt: new Date('2026-02-01T00:00:00Z'),
+      });
+
+      const res = await app.inject({ method: 'GET', url: `/pulls/${pr.id}/blast` });
+      expect(res.statusCode).toBe(200);
+      const blast = res.json();
+
+      expect(blast.prior_prs.map((p: { pr_number: number }) => p.pr_number)).toEqual([
+        newest.number,
+        middle.number,
+        older.number,
+      ]);
+
+      await app.close();
+    });
+
+    it('populates merged_at from updatedAt, falls back to openedAt, or empty string when both are null', async () => {
+      const app = await appWith();
+      const { repo, pr } = await setupRepoAndPr(pg.handle.db, workspaceId, ['src/merged.ts']);
+
+      const withUpdated = await insertOtherPr(pg.handle.db, workspaceId, repo.id, {
+        files: ['src/merged.ts'],
+        updatedAt: new Date('2026-04-01T00:00:00Z'),
+        openedAt: new Date('2026-03-01T00:00:00Z'),
+      });
+      const withOpenedOnly = await insertOtherPr(pg.handle.db, workspaceId, repo.id, {
+        files: ['src/merged.ts'],
+        openedAt: new Date('2026-02-01T00:00:00Z'),
+      });
+      const withNeither = await insertOtherPr(pg.handle.db, workspaceId, repo.id, {
+        files: ['src/merged.ts'],
+      });
+
+      const res = await app.inject({ method: 'GET', url: `/pulls/${pr.id}/blast` });
+      expect(res.statusCode).toBe(200);
+      const blast = res.json();
+      const byNumber = new Map<number, { merged_at: string }>(
+        blast.prior_prs.map((p: { pr_number: number; merged_at: string }) => [p.pr_number, p]),
+      );
+
+      expect(byNumber.get(withUpdated.number)?.merged_at).toBe('2026-04-01T00:00:00.000Z');
+      expect(byNumber.get(withOpenedOnly.number)?.merged_at).toBe('2026-02-01T00:00:00.000Z');
+      expect(byNumber.get(withNeither.number)?.merged_at).toBe('');
+
+      await app.close();
+    });
+
+    it('caps prior_prs at 10, keeping the 10 most recent overlapping PRs', async () => {
+      const app = await appWith();
+      const { repo, pr } = await setupRepoAndPr(pg.handle.db, workspaceId, ['src/hot.ts']);
+
+      const others: Awaited<ReturnType<typeof insertOtherPr>>[] = [];
+      for (let i = 0; i < 12; i++) {
+        // eslint-disable-next-line no-await-in-loop
+        const other = await insertOtherPr(pg.handle.db, workspaceId, repo.id, {
+          files: ['src/hot.ts'],
+          updatedAt: new Date(Date.UTC(2026, 0, 1 + i)), // strictly increasing
+        });
+        others.push(other);
+      }
+      // Most recent 10 = the LAST 10 inserted (i=2..11), newest-first.
+      const expectedTop10Numbers = others
+        .slice(2)
+        .map((o) => o.number)
+        .reverse();
+
+      const res = await app.inject({ method: 'GET', url: `/pulls/${pr.id}/blast` });
+      expect(res.statusCode).toBe(200);
+      const blast = res.json();
+
+      expect(blast.prior_prs).toHaveLength(10);
+      expect(blast.prior_prs.map((p: { pr_number: number }) => p.pr_number)).toEqual(
+        expectedTop10Numbers,
+      );
+
+      await app.close();
+    });
+
+    it('returns prior_prs: [] when the current PR has no pr_files at all', async () => {
+      const app = await appWith();
+      const { repo, pr } = await setupRepoAndPr(pg.handle.db, workspaceId, []);
+      // An "other" PR exists in the same repo, but the current PR's empty
+      // changed-files list means the repo function short-circuits before
+      // ever querying — this row must NOT surface.
+      await insertOtherPr(pg.handle.db, workspaceId, repo.id, {
+        files: ['src/anything.ts'],
+      });
+
+      const res = await app.inject({ method: 'GET', url: `/pulls/${pr.id}/blast` });
+      expect(res.statusCode).toBe(200);
+      const blast = res.json();
+
+      expect(blast.prior_prs).toEqual([]);
+
+      await app.close();
+    });
   });
 });

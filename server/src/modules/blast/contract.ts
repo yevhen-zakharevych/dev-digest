@@ -18,6 +18,7 @@ export function emptyBlastRadius(summary: string): BlastRadius {
     changed_symbols: [],
     downstream: [],
     summary,
+    prior_prs: [],
   };
 }
 
@@ -43,6 +44,10 @@ export function emptyBlastRadius(summary: string): BlastRadius {
  * absent (degraded/ripgrep path), there is no per-symbol attribution
  * available, so the flat `impactedEndpoints` list is surfaced on every group
  * rather than silently dropped.
+ *
+ * `prior_prs` is always emitted `[]` here — this mapper is pure/DB-free and
+ * PR history isn't derivable from `BlastResult`. `BlastService.getBlastRadius`
+ * overwrites it with the real DB-sourced array (docs/plans/L04-blast-radius-prior-prs.md §4.4).
  */
 export function blastResultToContract(result: BlastResult): BlastRadius {
   const changed_symbols: ChangedSymbol[] = result.changedSymbols.map((s) => ({
@@ -99,5 +104,6 @@ export function blastResultToContract(result: BlastResult): BlastRadius {
     changed_symbols,
     downstream: [...groups.values()],
     summary,
+    prior_prs: [],
   };
 }
