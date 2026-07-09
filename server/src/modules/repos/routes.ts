@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
+import { z } from 'zod';
 import { RepoInput } from '@devdigest/shared';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
@@ -34,6 +35,15 @@ export default async function reposRoutes(appBase: FastifyInstance) {
     const { workspaceId } = await getContext(app.container, req);
     return service.list(workspaceId);
   });
+
+  app.get(
+    '/repos/resolve',
+    { schema: { querystring: z.object({ slug: z.string() }) } },
+    async (req) => {
+      const { workspaceId } = await getContext(app.container, req);
+      return service.resolveBySlug(workspaceId, req.query.slug);
+    },
+  );
 
   app.post('/repos/:id/refresh', { schema: { params: IdParams } }, async (req) => {
     const { workspaceId } = await getContext(app.container, req);

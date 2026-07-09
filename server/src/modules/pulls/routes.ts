@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
+import { z } from 'zod';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { PrMeta, PrDetail, GitHubClient, PrReviewComment } from '@devdigest/shared';
 import { PrCommentInput } from '@devdigest/shared';
@@ -225,6 +226,29 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       };
     });
   });
+
+  // Resolve a GitHub PR number to its internal id, scoped to the repo (`:id`)
+  // and the current workspace. Pure local lookup — no GitHub sync.
+  app.get(
+    '/repos/:id/pulls/resolve',
+    { schema: { params: IdParams, querystring: z.object({ number: z.coerce.number().int() }) } },
+    async (req): Promise<{ id: string }> => {
+      const { workspaceId } = await getContext(container, req);
+      const [row] = await container.db
+        .select({ id: t.pullRequests.id })
+        .from(t.pullRequests)
+        .where(
+          and(
+            eq(t.pullRequests.workspaceId, workspaceId),
+            eq(t.pullRequests.repoId, req.params.id),
+            eq(t.pullRequests.number, req.query.number),
+          ),
+        )
+        .limit(1);
+      if (!row) throw new NotFoundError('PR not found');
+      return { id: row.id };
+    },
+  );
 
   app.get('/pulls/:id', { schema: { params: IdParams } }, async (req): Promise<PrDetail> => {
     const { workspaceId } = await getContext(container, req);

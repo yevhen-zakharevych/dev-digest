@@ -1,10 +1,9 @@
 /**
  * MCP tool input schemas + local output envelopes (transport-local — NOT
- * vendored in `@devdigest/shared`; see docs/plans/L04-devdigest-mcp.md §4).
+ * vendored in `@devdigest/shared`; consumed only by the LLM client over stdio).
  *
  * Every input schema is FLAT and `.strict()` (reject unknown keys), with
- * `.describe()` on every field — the descriptions below are copied VERBATIM
- * from the plan §5.1 so the LLM-facing tool docs match the design exactly.
+ * `.describe()` on every field — the descriptions are the LLM-facing tool docs.
  *
  * Output envelopes reuse existing `@devdigest/shared` data contracts
  * (`Agent`, `Verdict`, `ConventionCandidate`, `BlastRadius`, `Finding`) as
@@ -26,7 +25,9 @@ export const RunAgentOnPrInput = z
   .object({
     repo: z.string().describe('Repository in "owner/name" form, e.g. "acme/web".'),
     pr: z.number().int().describe('Pull request number as shown on GitHub (not an internal id).'),
-    agent: z.string().describe('Agent id from list_agents.'),
+    agent: z
+      .string()
+      .describe('Agent id OR exact agent name from list_agents, e.g. "Security Reviewer".'),
   })
   .strict();
 export type RunAgentOnPrInput = z.infer<typeof RunAgentOnPrInput>;
@@ -90,7 +91,7 @@ export const GetConventionsInput = z
   .strict();
 export type GetConventionsInput = z.infer<typeof GetConventionsInput>;
 
-/** `get_blast_radius` — deliberate stub in this lesson (see mappers.ts). */
+/** `get_blast_radius` — keyed by repo + PR. */
 export const GetBlastRadiusInput = z
   .object({
     repo: z.string().describe('Repository "owner/name".'),

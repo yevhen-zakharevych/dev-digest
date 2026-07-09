@@ -1,9 +1,9 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { render, screen, cleanup, fireEvent, within } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
-import type { BlastRadius } from "@devdigest/shared";
+import type { BlastRadius, PrHistoryItem } from "@devdigest/shared";
 import blastMessages from "../../../../../../../../messages/en/blast.json";
-import { githubBlobUrl } from "@/lib/github-urls";
+import { githubBlobUrl, githubPrUrl } from "@/lib/github-urls";
 
 // House style for a component whose data comes from `lib/hooks/*` (see
 // client/INSIGHTS.md:97 / IntentCard.test.tsx): mock the hooks modules
@@ -40,6 +40,16 @@ const BLAST: BlastRadius = {
     },
   ],
   summary: "1 changed symbol, 1 caller, 1 endpoint affected.",
+  prior_prs: [],
+};
+
+const PRIOR_PR: PrHistoryItem = {
+  pr_number: 482,
+  title: "Some earlier PR",
+  author: "octocat",
+  merged_at: "2026-06-01T00:00:00.000Z",
+  files_overlap: ["src/config.ts"],
+  notes: "",
 };
 
 function mockHooks({
@@ -136,6 +146,7 @@ describe("BlastRadiusCard", () => {
         },
       ],
       summary: "1 changed symbol, 20 callers.",
+      prior_prs: [],
     };
     mockHooks({ blast: cappedBlast });
     renderWithIntl(
@@ -204,6 +215,7 @@ describe("BlastRadiusCard", () => {
         },
       ],
       summary: "2 changed symbols.",
+      prior_prs: [],
     };
     mockHooks({ blast: sharedBlast });
     renderWithIntl(
@@ -236,5 +248,54 @@ describe("BlastRadiusCard", () => {
 
     expect(screen.getByText("reviewPr")).toBeInTheDocument();
     expect(screen.queryByText("No downstream callers to graph.")).not.toBeInTheDocument();
+  });
+
+  it("renders a collapsed prior-PRs section with a count badge, then expands on click", () => {
+    mockHooks({ blast: { ...BLAST, prior_prs: [PRIOR_PR] } });
+    renderWithIntl(
+      <BlastRadiusCard prId="pr1" repoId="repo1" repoFullName="acme/widgets" sha="deadbeef" />,
+    );
+
+    // Scoped via data-testid (client/INSIGHTS.md 2026-07-07): text inside
+    // this section can collide with other text elsewhere on the card once
+    // both are on screen.
+    const section = screen.getByTestId("blast-prior-prs") as HTMLDetailsElement;
+    const priorPrs = within(section);
+    expect(priorPrs.getByText("Prior PRs touching these files")).toBeInTheDocument();
+    expect(priorPrs.getByText("1")).toBeInTheDocument();
+
+    // Collapsed by default — jsdom doesn't apply the UA stylesheet that
+    // hides <details> children when closed (so RTL queries still find them),
+    // so assert the real signal instead: the `open` property/attribute.
+    expect(section.open).toBe(false);
+
+    fireEvent.click(priorPrs.getByText("Prior PRs touching these files"));
+
+    expect(section.open).toBe(true);
+    const link = priorPrs.getByRole("link", { name: "#482" });
+    expect(link).toHaveAttribute("href", githubPrUrl("acme/widgets", 482));
+    expect(priorPrs.getByText("Some earlier PR")).toBeInTheDocument();
+    expect(priorPrs.getByText("octocat · 2026-06-01")).toBeInTheDocument();
+  });
+
+  it("renders no prior-PRs section when there are none", () => {
+    mockHooks({ blast: { ...BLAST, prior_prs: [] } });
+    renderWithIntl(
+      <BlastRadiusCard prId="pr1" repoId="repo1" repoFullName="acme/widgets" sha="deadbeef" />,
+    );
+
+    expect(screen.queryByTestId("blast-prior-prs")).not.toBeInTheDocument();
+  });
+
+  it("renders an inert prior-PR entry (no link) when repoFullName is not known yet", () => {
+    mockHooks({ blast: { ...BLAST, prior_prs: [PRIOR_PR] } });
+    renderWithIntl(<BlastRadiusCard prId="pr1" repoId="repo1" repoFullName={null} sha="deadbeef" />);
+
+    const priorPrs = within(screen.getByTestId("blast-prior-prs"));
+    fireEvent.click(priorPrs.getByText("Prior PRs touching these files"));
+
+    expect(priorPrs.queryByRole("link")).not.toBeInTheDocument();
+    expect(priorPrs.getByText("#482")).toBeInTheDocument();
+    expect(priorPrs.getByText("Some earlier PR")).toBeInTheDocument();
   });
 });

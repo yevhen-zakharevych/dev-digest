@@ -1,6 +1,6 @@
 import type { Db } from '../../db/client.js';
 import * as t from '../../db/schema.js';
-import type { Finding, Intent, RunSummary, RunTrace } from '@devdigest/shared';
+import type { Finding, Intent, PrHistoryItem, RunSummary, RunTrace } from '@devdigest/shared';
 
 /**
  * A2 — review data-access. The ONLY layer touching the DB for the review
@@ -42,6 +42,18 @@ export class ReviewRepository {
 
   getPrFiles(prId: string): Promise<(typeof t.prFiles.$inferSelect)[]> {
     return pullRepo.getPrFiles(this.db, prId);
+  }
+
+  /** Other PRs (same workspace+repo) that previously touched at least one of
+   *  `changedFiles`, excluding `currentPrId` (self). See doc comment on the
+   *  underlying repo function for the `merged_at` "last activity" proxy note. */
+  priorPrsTouchingFiles(
+    workspaceId: string,
+    repoId: string,
+    currentPrId: string,
+    changedFiles: string[],
+  ): Promise<PrHistoryItem[]> {
+    return pullRepo.priorPrsTouchingFiles(this.db, workspaceId, repoId, currentPrId, changedFiles);
   }
 
   // ---- reviews + findings -------------------------------------------------

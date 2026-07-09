@@ -12,6 +12,7 @@ import { ReviewService } from './service.js';
  *   POST   /pulls/:id/review  {agentId} | {all:true}  → run review(s); returns runs
  *   GET    /runs/:id/events                            → SSE stream of RunEvent (replay-first)
  *   GET    /runs/:id/trace                             → the single-document RunTrace
+ *   GET    /runs/:id/review                            → persisted review (+findings) for a run
  *   GET    /pulls/:id/reviews                          → persisted reviews + findings for a PR
  *   POST   /findings/:id/(accept|dismiss)              → finding actions
  *   POST   /pulls/:id/intent                           → recompute Intent Layer (L03), rate-limited
@@ -137,6 +138,14 @@ export default async function reviewsRoutes(appBase: FastifyInstance) {
     const trace = await service.getRunTrace(req.params.id);
     if (!trace) throw new NotFoundError('Run trace not found');
     return trace;
+  });
+
+  // ---- Persisted review (+ findings) for a given agent run --------------
+  app.get('/runs/:id/review', { schema: { params: IdParams } }, async (req) => {
+    const { workspaceId } = await getContext(container, req);
+    const review = await service.reviewByRunId(workspaceId, req.params.id);
+    if (!review) throw new NotFoundError('Review not found for run');
+    return review;
   });
 
   // ---- Reads --------------------------------------------------------------

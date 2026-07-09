@@ -13,6 +13,23 @@ export const Intent = z.object({
 });
 export type Intent = z.infer<typeof Intent>;
 
+// ---- PR History ----
+// Defined before Blast radius: BlastRadius.prior_prs reuses PrHistoryItem.
+export const PrHistoryItem = z.object({
+  pr_number: z.number().int(),
+  title: z.string(),
+  merged_at: z.string(),
+  author: z.string(),
+  files_overlap: z.array(z.string()),
+  notes: z.string(),
+});
+export type PrHistoryItem = z.infer<typeof PrHistoryItem>;
+
+export const PrHistory = z.object({
+  history: z.array(PrHistoryItem),
+});
+export type PrHistory = z.infer<typeof PrHistory>;
+
 // ---- Blast radius ----
 export const ChangedSymbol = z.object({
   name: z.string(),
@@ -40,6 +57,7 @@ export const BlastRadius = z.object({
   changed_symbols: z.array(ChangedSymbol),
   downstream: z.array(DownstreamImpact),
   summary: z.string(),
+  prior_prs: z.array(PrHistoryItem),
 });
 export type BlastRadius = z.infer<typeof BlastRadius>;
 
@@ -60,22 +78,6 @@ export const Risks = z.object({
   risks: z.array(Risk),
 });
 export type Risks = z.infer<typeof Risks>;
-
-// ---- PR History ----
-export const PrHistoryItem = z.object({
-  pr_number: z.number().int(),
-  title: z.string(),
-  merged_at: z.string(),
-  author: z.string(),
-  files_overlap: z.array(z.string()),
-  notes: z.string(),
-});
-export type PrHistoryItem = z.infer<typeof PrHistoryItem>;
-
-export const PrHistory = z.object({
-  history: z.array(PrHistoryItem),
-});
-export type PrHistory = z.infer<typeof PrHistory>;
 
 // ---- Smart Diff ----
 export const SmartDiffRole = z.enum(['core', 'wiring', 'boilerplate']);

@@ -12,11 +12,11 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { Icon, SectionLabel, Badge, Button, MonoLink, Skeleton, EmptyState } from "@devdigest/ui";
+import { Icon, SectionLabel, Badge, Button, MonoLink, Avatar, Skeleton, EmptyState } from "@devdigest/ui";
 import { useBlastRadius } from "@/lib/hooks/brief";
 import { useRepoIntelStatus, type RepoIntelState } from "@/lib/hooks/repo-intel";
-import { githubBlobUrl } from "@/lib/github-urls";
-import type { ChangedSymbol, DownstreamImpact } from "@devdigest/shared";
+import { githubBlobUrl, githubPrUrl } from "@/lib/github-urls";
+import type { ChangedSymbol, DownstreamImpact, PrHistoryItem } from "@devdigest/shared";
 import { s } from "./styles";
 
 /** Server caps callers at 20 per symbol (D2, per-`viaSymbol` cap in the
@@ -166,11 +166,42 @@ function SymbolRow({
   );
 }
 
+/** One row for a prior PR that previously touched at least one of the current
+ * PR's changed files, rendered timeline-style (dot + connecting rail, see
+ * `s.priorPrList`'s `borderLeft`). The `#{pr_number}` link and the title are
+ * deliberately SEPARATE elements (not one combined string) so each is
+ * independently queryable — only the caption's author+date combo needs the
+ * single-text-node template-string treatment (the "getNodeText only matches
+ * direct text-node children" landmine, client/INSIGHTS.md 2026-07-07). */
+function PriorPrRow({ pr, repoFullName }: { pr: PrHistoryItem; repoFullName: string | null }) {
+  const date = pr.merged_at ? pr.merged_at.slice(0, 10) : "";
+
+  return (
+    <li style={s.priorPrRow}>
+      <span style={s.priorPrDot} />
+      <div style={s.priorPrContent}>
+        <div style={s.priorPrHeader}>
+          <MonoLink href={repoFullName ? githubPrUrl(repoFullName, pr.pr_number) : undefined}>
+            {`#${pr.pr_number}`}
+          </MonoLink>
+          <span style={s.priorPrTitleText}>{pr.title}</span>
+        </div>
+        <div style={s.priorPrMeta}>
+          <Avatar name={pr.author} size={16} />
+          <span style={s.priorPrCaption}>{date ? `${pr.author} · ${date}` : pr.author}</span>
+        </div>
+        {pr.notes && <p style={s.priorPrNotes}>{pr.notes}</p>}
+      </div>
+    </li>
+  );
+}
+
 export function BlastRadiusCard({ prId, repoId, repoFullName, sha }: BlastRadiusCardProps) {
   const t = useTranslations("blast");
   const { data: blast, isLoading } = useBlastRadius(prId);
   const { data: intelState } = useRepoIntelStatus(repoId);
   const [view, setView] = React.useState<ViewMode>("tree");
+  const [priorPrsOpen, setPriorPrsOpen] = React.useState(false);
 
   const downstreamBySymbol = React.useMemo(() => {
     const map = new Map<string, DownstreamImpact>();
@@ -282,6 +313,30 @@ export function BlastRadiusCard({ prId, repoId, repoFullName, sha }: BlastRadius
             />
           ))}
         </div>
+      )}
+
+      {blast.prior_prs.length > 0 && (
+        <details
+          style={s.priorPrsWrap}
+          open={priorPrsOpen}
+          onToggle={(e) => setPriorPrsOpen(e.currentTarget.open)}
+          data-testid="blast-prior-prs"
+        >
+          <summary style={s.priorPrsSummary}>
+            <Icon.History size={14} style={s.priorPrsIcon} />
+            <span style={s.priorPrsTitle}>{t("priorPrs.title")}</span>
+            <Badge mono bg="var(--bg-hover)">{blast.prior_prs.length}</Badge>
+            <Icon.ChevronDown
+              size={15}
+              style={{ ...s.priorPrsChevron, transform: priorPrsOpen ? "rotate(180deg)" : "none" }}
+            />
+          </summary>
+          <ul style={s.priorPrList}>
+            {blast.prior_prs.map((pr) => (
+              <PriorPrRow key={pr.pr_number} pr={pr} repoFullName={repoFullName} />
+            ))}
+          </ul>
+        </details>
       )}
 
       <div style={s.disclaimerFooter}>

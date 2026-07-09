@@ -1,27 +1,25 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import type { Container } from '../../platform/container.js';
-import { ReviewService } from '../../modules/reviews/service.js';
-import { resolveWorkspaceId, resolveRepoBySlug, resolvePrId } from '../resolve.js';
+import type { Finding } from '@devdigest/shared';
+import { ApiError, type ToolDeps } from '../http/client.js';
+import { resolveRepoBySlug, resolvePrId } from '../resolve.js';
 import { GetFindingsInput, GetFindingsInputShape, FindingsPage } from '../schemas.js';
-import { toFinding, paginateFindings, type FindingLike } from '../mappers.js';
+import { toFinding, paginateFindings } from '../mappers.js';
+import { errorResult } from './util.js';
 
 /**
  * `get_findings` — read-only. Identify the completed run by `run_id` OR by
  * `repo`+`pr` (never both, enforced by `GetFindingsInput`'s `.superRefine`),
  * then return its verdict + a paginated, char-budgeted findings page.
  *
- * Mirrors the `registerTool` pattern established in `list-agents.ts`: the
- * `inputSchema` needs a raw `ZodRawShape`, but `GetFindingsInput` itself is a
+ * `inputSchema` needs a raw `ZodRawShape`, but `GetFindingsInput` is a
  * `ZodEffects` (from `.superRefine`) with no `.shape` — so we pass the
- * factored-out `GetFindingsInputShape` here, while still `.safeParse`-ing
- * against the full refined `GetFindingsInput` inside the handler (enforces
- * the XOR + `.strict()`).
+ * factored-out `GetFindingsInputShape`, while still `.safeParse`-ing against
+ * the full refined `GetFindingsInput` inside the handler (enforces the XOR +
+ * `.strict()`).
  *
- * Onion: the handler only calls `resolveWorkspaceId`/`resolveRepoBySlug`/
- * `resolvePrId` + `container.reviewRepo`/`ReviewService` + pure mappers — no
- * direct DB/LLM access.
+ * Reaches the product only through the HTTP `client` — no DB/Container.
  */
-export function registerGetFindings(server: McpServer, container: Container): void {
+export function registerGetFindings(server: McpServer, { client }: ToolDeps): void {
   server.registerTool(
     'get_findings',
     {
@@ -45,24 +43,24 @@ export function registerGetFindings(server: McpServer, container: Container): vo
       }
       const { run_id, repo, pr, format, offset } = parsed.data;
 
-      const workspaceId = await resolveWorkspaceId(container);
-
       let verdict: string | null;
-      let rows: FindingLike[];
+      let rows: Finding[];
 
       if (run_id !== undefined) {
-        const found = await container.reviewRepo.reviewByRunId(workspaceId, run_id);
-        if (!found) {
-          return errorResult(
-            `no review found for run_id "${run_id}" — run run_agent_on_pr first`,
-          );
+        try {
+          const found = await client.reviewByRun(run_id);
+          verdict = found.verdict;
+          rows = found.findings;
+        } catch (err) {
+          if (err instanceof ApiError && err.status === 404) {
+            return errorResult(`no review found for run_id "${run_id}" — run run_agent_on_pr first`);
+          }
+          throw err;
         }
-        verdict = found.review.verdict;
-        rows = found.findings;
       } else {
         // repo + pr branch (guaranteed present by GetFindingsInput's XOR refine).
         const slug = repo!;
-        const repoResult = await resolveRepoBySlug(container, workspaceId, slug);
+        const repoResult = await resolveRepoBySlug(client, slug);
         if (!repoResult.ok) {
           return errorResult(
             repoResult.reason === 'bad_slug'
@@ -71,19 +69,14 @@ export function registerGetFindings(server: McpServer, container: Container): vo
           );
         }
 
-        const prResult = await resolvePrId(container, workspaceId, repoResult.repo.id, pr!);
+        const prResult = await resolvePrId(client, repoResult.repoId, pr!);
         if (!prResult.ok) {
           return errorResult(`PR #${pr} not found in ${slug}`);
         }
 
-        const reviews = await new ReviewService(container).reviewsForPull(
-          workspaceId,
-          prResult.pull.id,
-        );
+        const reviews = await client.reviewsForPull(prResult.prId);
         if (reviews.length === 0) {
-          return errorResult(
-            `no review yet for PR #${pr} in ${slug} — run run_agent_on_pr first`,
-          );
+          return errorResult(`no review yet for PR #${pr} in ${slug} — run run_agent_on_pr first`);
         }
 
         // `reviewsForPull` returns newest-first; use the latest review's verdict.
@@ -113,9 +106,4 @@ export function registerGetFindings(server: McpServer, container: Container): vo
       };
     },
   );
-}
-
-/** Local "error leads onward" helper — same shape as `list-agents.ts`'s. */
-function errorResult(text: string): { content: [{ type: 'text'; text: string }]; isError: true } {
-  return { content: [{ type: 'text', text }], isError: true as const };
 }

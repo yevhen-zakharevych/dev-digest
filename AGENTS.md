@@ -63,6 +63,28 @@ each lesson L01–L08 adds one feature back. See `README.md` for full architectu
 
 Per-module commands live in each module's `AGENTS.md`.
 
+## DevDigest MCP server (run reviews via MCP)
+
+DevDigest ships a standalone MCP server (`mcp-server/`, wired in the repo-root
+`.mcp.json`) that exposes the review engine over stdio. When a request is about
+**running or reading a review / conventions / blast-radius for a PR**, CALL THE
+`devdigest` MCP TOOLS DIRECTLY. Do NOT shell out — never `curl` the API, never
+`gh`, never invent an `mcp-client` command, never POST to `localhost:3001` by
+hand. The five tools ARE your interface:
+`list_agents`, `run_agent_on_pr`, `get_findings`, `get_conventions`, `get_blast_radius`.
+
+Run an agent on a PR (the common flow):
+1. `run_agent_on_pr` with `{ repo: "owner/name", pr: <number>, agent: "<name or id>" }`.
+   `agent` accepts an agent **name** ("Security Reviewer") OR an id — you do NOT
+   need `list_agents` first.
+2. If it returns `{ status: "running" }`, call `get_findings` with the returned
+   `run_id` — pass `run_id` ALONE (it's `run_id` XOR `repo`+`pr`, never both).
+
+Prereq: the API must be up (`./scripts/dev.sh`). If a tool returns
+"cannot reach the DevDigest API", start it — do not fall back to `curl`. If the
+`devdigest` tools aren't available at all, the session hasn't loaded `.mcp.json`
+(reconnect via `/mcp` or restart) — that is a connection step, not a reason to shell out.
+
 ## Session protocol
 
 **Start of task.** Identify which module you'll touch (`client/`, `server/`,
