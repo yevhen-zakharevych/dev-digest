@@ -4,7 +4,7 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
-import type { PrIntentRecord, SmartDiff } from "@devdigest/shared";
+import type { PrIntentRecord, SmartDiff, BlastRadius } from "@devdigest/shared";
 
 // ---- Stored intent for a PR (cheap DB read, no LLM) ----
 export function usePrIntent(prId: string | number | null | undefined) {
@@ -21,6 +21,16 @@ export function useSmartDiff(prId: string | null | undefined) {
     queryKey: ["smart-diff", prId],
     queryFn: () => api.get<SmartDiff>(`/pulls/${prId}/smart-diff`),
     enabled: prId != null,
+  });
+}
+
+// ---- Blast Radius for a PR (deterministic, reads the repo-intel index —
+//      always returns a real BlastRadius, degraded state is encoded in its
+//      `summary`, so no `T | null` here — see client/INSIGHTS.md:21) ----
+export function useBlastRadius(prId: string | number) {
+  return useQuery({
+    queryKey: ["blast", prId],
+    queryFn: () => api.get<BlastRadius>(`/pulls/${prId}/blast`),
   });
 }
 

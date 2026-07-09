@@ -78,6 +78,24 @@ export async function getReview(db: Db, reviewId: string): Promise<ReviewRow | u
   return row;
 }
 
+/** Review + findings for a given agent run (workspace-scoped). `runId` is a
+ *  nullable, unindexed FK-less column, so this may legitimately miss. */
+export async function reviewByRunId(
+  db: Db,
+  workspaceId: string,
+  runId: string,
+): Promise<{ review: ReviewRow; findings: FindingRow[] } | undefined> {
+  const [review] = await db
+    .select()
+    .from(t.reviews)
+    .where(and(eq(t.reviews.runId, runId), eq(t.reviews.workspaceId, workspaceId)))
+    .orderBy(desc(t.reviews.createdAt))
+    .limit(1);
+  if (!review) return undefined;
+  const findings = await db.select().from(t.findings).where(inArray(t.findings.reviewId, [review.id]));
+  return { review, findings };
+}
+
 /** Delete a whole review (one agent's run) + its findings (cascade), scoped
  *  to the workspace. Returns false if not found in the workspace. */
 export async function deleteReview(

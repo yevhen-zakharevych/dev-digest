@@ -31,6 +31,11 @@ export class ReviewRepository {
     return pullRepo.getPull(this.db, workspaceId, prId);
   }
 
+  /** PR lookup by (repo, number) — backed by unique index `pr_repo_number_uq`. */
+  getPullByNumber(workspaceId: string, repoId: string, number: number): Promise<PullRow | undefined> {
+    return pullRepo.getPullByNumber(this.db, workspaceId, repoId, number);
+  }
+
   getRepo(repoId: string): Promise<typeof t.repos.$inferSelect | undefined> {
     return pullRepo.getRepo(this.db, repoId);
   }
@@ -66,6 +71,14 @@ export class ReviewRepository {
 
   getReview(reviewId: string): Promise<ReviewRow | undefined> {
     return reviewRepo.getReview(this.db, reviewId);
+  }
+
+  /** Review + findings for a given agent run (workspace-scoped). */
+  reviewByRunId(
+    workspaceId: string,
+    runId: string,
+  ): Promise<{ review: ReviewRow; findings: FindingRow[] } | undefined> {
+    return reviewRepo.reviewByRunId(this.db, workspaceId, runId);
   }
 
   /** In-flight runs for a PR (status='running') — the server-side source of
