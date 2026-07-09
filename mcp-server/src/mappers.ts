@@ -1,39 +1,16 @@
 /**
- * Pure mapping functions for the MCP transport layer. No DB, no `this`, no
- * env, no `@modelcontextprotocol/sdk` import — plain-object-in/out only.
+ * Pure mapping functions for the MCP transport. No DB, no `this`, no env, no
+ * `@modelcontextprotocol/sdk` import — plain-object-in/out only.
  *
- * `toConciseFinding`/`toDetailedFinding` accept either shape a caller may hand
- * them: the raw DB row (`FindingRow`, camelCase — e.g. from the new
- * `reviewByRunId` repository read) or the already-DTO-mapped
- * `ReviewDtoFinding` (snake_case, from `ReviewService.reviewsForPull`).
+ * Unlike the old in-`server/` version, findings always arrive here already in
+ * the canonical snake_case `Finding` shape (the HTTP API returns DTOs), so the
+ * `FindingRow`/`normalize` camelCase branch is gone — the input is just
+ * `Finding`.
  */
 import type { Finding, Severity } from '@devdigest/shared';
-import { findingRowToDto, type ReviewDtoFinding } from '../modules/reviews/helpers.js';
-import type { FindingRow } from '../modules/reviews/repository.js';
 import type { ConciseFinding, DetailedFinding } from './schemas.js';
 
-/**
- * `blastResultToContract`/`emptyBlastRadius` (L04) now live in
- * `modules/blast/contract.ts` — a neutral leaf so the HTTP blast route
- * doesn't have to import from this `mcp/` transport layer. Re-exported here
- * unchanged so existing MCP imports (and `test/mcp-mappers.test.ts`) don't
- * need to change their import path.
- */
-export { blastResultToContract, emptyBlastRadius } from '../modules/blast/contract.js';
-
-export type FindingLike = FindingRow | ReviewDtoFinding;
-
-function isDbFindingRow(row: FindingLike): row is FindingRow {
-  return 'startLine' in row;
-}
-
-/** Normalize either input shape to the canonical (snake_case) `Finding` shape. */
-function normalize(row: FindingLike): Finding {
-  return isDbFindingRow(row) ? findingRowToDto(row) : row;
-}
-
-export function toConciseFinding(row: FindingLike): ConciseFinding {
-  const f = normalize(row);
+export function toConciseFinding(f: Finding): ConciseFinding {
   return {
     id: f.id,
     severity: f.severity,
@@ -45,10 +22,9 @@ export function toConciseFinding(row: FindingLike): ConciseFinding {
   };
 }
 
-export function toDetailedFinding(row: FindingLike): DetailedFinding {
-  const f = normalize(row);
+export function toDetailedFinding(f: Finding): DetailedFinding {
   return {
-    ...toConciseFinding(row),
+    ...toConciseFinding(f),
     rationale: f.rationale,
     suggestion: f.suggestion ?? null,
     confidence: f.confidence,
@@ -57,10 +33,10 @@ export function toDetailedFinding(row: FindingLike): DetailedFinding {
 
 /** Format-toggle convenience wrapper used by `get_findings`. */
 export function toFinding(
-  row: FindingLike,
+  f: Finding,
   format: 'concise' | 'detailed',
 ): ConciseFinding | DetailedFinding {
-  return format === 'detailed' ? toDetailedFinding(row) : toConciseFinding(row);
+  return format === 'detailed' ? toDetailedFinding(f) : toConciseFinding(f);
 }
 
 const SEVERITY_ORDER: Record<Severity, number> = {

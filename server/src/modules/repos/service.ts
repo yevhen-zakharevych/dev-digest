@@ -141,4 +141,11 @@ export class RepoService {
     const ok = await this.repo.remove(workspaceId, id);
     if (!ok) throw new NotFoundError('Repo not found');
   }
+
+  /** Resolve a `owner/name` repo slug to its internal id (workspace-scoped). */
+  async resolveBySlug(workspaceId: string, slug: string): Promise<{ id: string }> {
+    const repo = await this.repo.findByFullName(workspaceId, slug);
+    if (!repo) throw new NotFoundError('Repo not found');
+    return { id: repo.id };
+  }
 }

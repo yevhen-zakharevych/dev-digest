@@ -184,6 +184,13 @@ export class ReviewService {
     return this.repo.getRunTrace(runId);
   }
 
+  /** Persisted review (+ findings) for a given agent run (workspace-scoped). */
+  async reviewByRunId(workspaceId: string, runId: string): Promise<ReviewDto | null> {
+    const found = await this.repo.reviewByRunId(workspaceId, runId);
+    if (!found) return null;
+    return reviewToDto(found.review, found.findings);
+  }
+
   // ===========================================================================
   // Intent Layer (L03) — thin delegation to IntentService, keeps the `service.*`
   // call shape uniform for routes.

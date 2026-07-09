@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "devdigest": {
+      "command": "pnpm",
+      "args": [
+        "--dir",
+        "/Users/yevhen/Code/ai-agentic-engineering/dev-digest/mcp-server",
+        "start"
+      ],
+      "env": {
+        "DEVDIGEST_API_URL": "http://localhost:3001"
+      }
+    }
+  }
+}

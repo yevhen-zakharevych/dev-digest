@@ -209,3 +209,21 @@ Wired the final two MCP files (`server/src/mcp/server.ts` and `server/src/mcp.ts
 ## Open Questions
 
 _No entries yet._
+
+### 2026-07-09 — F1 REST addendum: `GET /repos/resolve`
+
+**A DIFFERENT whole-project `pnpm typecheck` noise class than the sibling-file one at `INSIGHTS.md:44`: `TS2307 Cannot find module '@modelcontextprotocol/sdk/server/*.js'` across all of `src/mcp/**` (11 pre-existing errors) is an ENVIRONMENT/dependency gap (the package's type declarations aren't resolvable in this checkout), not a transient sibling-in-progress-file race.** Confirmed unrelated to `modules/repos/routes.ts`/`service.ts` by grep-filtering `tsc` output for those two filenames (zero hits) while implementing `GET /repos/resolve` (`server/src/modules/repos/routes.ts`, `resolveBySlug` in `server/src/modules/repos/service.ts`). Same mitigation as `INSIGHTS.md:44` applies (grep your own filename, don't block on whole-project green) but the root cause differs — worth distinguishing "sibling task mid-edit" from "missing/broken dependency" when deciding whether the error is yours to fix.
+
+### 2026-07-09 — `pulls` module: `GET /repos/:id/pulls/resolve`
+
+Same `@modelcontextprotocol/sdk` `TS2307` noise reconfirmed a third time (`INSIGHTS.md:44`, `:215`) while grep-filtering `tsc` output for `pulls/routes.ts` (zero hits) after adding `GET /repos/:id/pulls/resolve` (PR-number → internal id lookup, workspace+repo scoped, no GitHub sync). No new mechanism to record — just corroborating that this dependency gap is stable across unrelated tasks and safe to ignore when grep-filtered.
+
+### 2026-07-09 — `server/test/mcp-http-endpoints.it.test.ts`: the 3 REST bridge routes for the standalone MCP server
+
+**For a pure DB-read route like `GET /runs/:id/review` (`modules/reviews/routes.ts:144`), seeding the `Review`+`Finding` rows via a DIRECT `db.insert(t.reviews)`/`db.insert(t.findings)` (repository/review.repo.ts:11-27` shapes) sidesteps the grounding-gate landmine entirely (`server/INSIGHTS.md:50`) — there's no diff/hunk to match because no review run and no `groundFindings()` call happens at all.** This is strictly simpler than the `mcp.it.test.ts` pattern (mocked LLM + matching `@@` diff hunk) for any test that only needs to exercise the READ side of `ReviewDto` mapping, not a live review run.
+
+**`buildApp({ config: config(), db: pg.handle.db })` with `overrides` OMITTED ENTIRELY (no `llm`/`git`/`embedder` keys) boots cleanly and serves any route that never calls those adapters** — confirmed for all 3 new bridge routes (`GET /repos/resolve`, `GET /repos/:id/pulls/resolve`, `GET /runs/:id/review`), mirroring the same no-overrides pattern already used in `test/blast.it.test.ts:137`. Don't reach for `MockLLMProvider`/`MockGitClient` boilerplate when the routes under test are pure DB reads.
+
+**`IdParams` (`modules/_shared/schemas.ts:11`, `z.string().uuid()`) also gates the `:id` param on `GET /runs/:id/review`** — same landmine as the uuid-column one already documented for MCP tool args (`server/INSIGHTS.md:187`): the 404-for-unknown-run test must pass a syntactically valid `crypto.randomUUID()`, not an arbitrary string, or Fastify's own schema validation returns 400/422 before the route handler (and its `NotFoundError` branch) ever runs.
+
+Mutation-tested and confirmed load-bearing (all reverted after, `git status --short src/` clean): (a) `RepoService.resolveBySlug`'s `if (!repo)` guard (`modules/repos/service.ts:148`, flipped to unconditional throw) → the E1 happy-path test goes red; (b) the `pulls/resolve` route's `if (!row)` guard (`modules/pulls/routes.ts:248`, same flip) → the E2 happy-path test goes red; (c) `reviewByRunId`'s findings query (`modules/reviews/repository/review.repo.ts:95`, replaced with a hardcoded empty array) → the E3 non-empty-findings assertion goes red (`expected [] to have a length of 1`). Confirms none of these 3 happy-path assertions are vacuous.
