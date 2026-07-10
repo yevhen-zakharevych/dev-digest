@@ -1,5 +1,5 @@
 import type { Container } from '../../platform/container.js';
-import type { Provider, Review, RunTrace, UnifiedDiff } from '@devdigest/shared';
+import type { Provider, Review, RepoRef, RunTrace, UnifiedDiff } from '@devdigest/shared';
 import { reviewPullRequest, countBlockers } from '@devdigest/reviewer-core';
 import { RunLogger } from '../../platform/run-logger.js';
 import * as schema from '../../db/schema.js';
@@ -10,6 +10,7 @@ import { taskLine } from './helpers.js';
 import { loadDiff } from './diff-loader.js';
 import type { IntentService } from './intent.service.js';
 import { formatIntentForPrompt } from './intent.service.js';
+import { resolveProjectContext } from './project-context.js';
 
 /** Thrown by a run when the user cancels it mid-flight (between map files). */
 export class RunCancelledError extends Error {
@@ -173,6 +174,13 @@ export class ReviewRunExecutor {
 
     runLog.info(`Starting review with agent "${agent.name}" (${agent.provider}/${agent.model})`);
 
+    // Project Context (SPEC-2026-07-10) — populated inside the try below, but
+    // declared out here so the failure/cancel trace (catch block) can still
+    // report whatever was resolved (or the pre-resolution empty defaults) —
+    // mirrors the pattern used for `start`/`runLog` above.
+    let specsRead: string[] = [];
+    let specsMissing: string[] = [];
+
     try {
       // Resolve the agent's LLM provider. (container.llm throws if the provider
       // key is missing — caught below and persisted as a failed run.)
@@ -221,6 +229,32 @@ export class ReviewRunExecutor {
         );
       }
 
+      // Project Context (SPEC-2026-07-10-project-context) — union of the
+      // agent's own attached docs + the attached docs of every ENABLED/loaded
+      // skill (AC-18: a disabled skill contributes nothing — reuse the exact
+      // same enabled-skill filter as `activeSkillBodies` above). Attach lists
+      // are snapshotted here, once, at run start (no mid-run re-reads). Each
+      // path is read FRESH via the sandboxed `readFileSafe` (AC-33: never
+      // cached); a missing/unreadable/unsafe path is fail-soft — skipped and
+      // recorded in `specsMissing`, never failing the run (AC-22).
+      const repoRef: RepoRef = { owner: repo.owner, name: repo.name };
+      const activeSkillDocs = linkedSkills
+        .filter((l) => l.enabled && l.skill.enabled)
+        .map((l) => l.skill.attachedDocs ?? []);
+      const projectContext = await resolveProjectContext(
+        agent.attachedDocs ?? [],
+        activeSkillDocs,
+        (path) => this.container.git.readFileSafe(repoRef, path),
+      );
+      specsRead = projectContext.read;
+      specsMissing = projectContext.missing;
+      if (specsRead.length > 0) {
+        runLog.info(`project context: ${specsRead.length} doc(s) attached (${specsRead.join(', ')})`);
+      }
+      if (specsMissing.length > 0) {
+        runLog.info(`project context: ${specsMissing.length} attached doc(s) skipped (missing/unreadable)`);
+      }
+
       // ---- Engine: assemble → single-pass → grounding -----------------------
       // The pure review pipeline lives in @devdigest/reviewer-core (shared with
       // the CI runner). The service owns only I/O: repo-intel context resolution
@@ -248,6 +282,11 @@ export class ReviewRunExecutor {
         // fenced downstream with the trusted INTENT_RULE outside the fence).
         // Omitted when classification was skipped/failed above.
         ...(intentText ? { intent: intentText } : {}),
+        // Project Context (SPEC-2026-07-10) — whole attached-doc texts;
+        // reviewer-core wraps each untrusted under the existing
+        // `## Project context` slot. Omitted entirely when zero docs were
+        // read (AC-23: no section at all, exactly as today).
+        ...(projectContext.texts.length > 0 ? { specs: projectContext.texts } : {}),
         task,
         sessionId: `${repo.owner}/${repo.name}#${pull.number}:${agent.name}`,
         onEvent: (e) => runLog.event(e.kind, e.msg, e.data),
@@ -324,7 +363,8 @@ export class ReviewRunExecutor {
         })),
         raw_output: outcome.raw,
         memory_pulled: [],
-        specs_read: [],
+        specs_read: specsRead,
+        specs_missing: specsMissing,
         // Persisted log = the run's FULL event buffer (incl. shared pre-work:
         // diff load + intent), not just events recorded inside this method.
         log: runLog.logFor(runId),
@@ -353,7 +393,10 @@ export class ReviewRunExecutor {
         })
         .catch(() => undefined);
       await this.repo
-        .saveRunTrace(runId, this.traceFromBuffer(runId, pull, agent, '0/0 passed', Date.now() - start))
+        .saveRunTrace(
+          runId,
+          this.traceFromBuffer(runId, pull, agent, '0/0 passed', Date.now() - start, specsRead, specsMissing),
+        )
         .catch(() => undefined);
       this.container.runBus.complete(runId);
       throw err;
@@ -458,6 +501,8 @@ export class ReviewRunExecutor {
     agent: AgentRow,
     grounding: string,
     durationMs = 0,
+    specsRead: string[] = [],
+    specsMissing: string[] = [],
   ): RunTrace {
     return {
       config: {
@@ -473,7 +518,8 @@ export class ReviewRunExecutor {
       tool_calls: [],
       raw_output: '',
       memory_pulled: [],
-      specs_read: [],
+      specs_read: specsRead,
+      specs_missing: specsMissing,
       log: this.container.runBus.buffer(runId).map((e) => ({ t: e.t, kind: e.kind, msg: e.msg })),
     };
   }

@@ -19,6 +19,29 @@ Example:
   Detail: Component calls useState but is in a Server Component file. Add 'use client' at the top.
 ```
 
+## Deterministic findings (SKILL.md step 4)
+
+These come from you, not from a sub-agent, so the `[skill-name]` slot names the check.
+They carry a file but not always a line — omit `:LINE` when the finding is about a file
+as a whole.
+
+```
+[CRITICAL] contract-mirror server/src/vendor/shared/contracts/brief.ts — One-sided vendored edit
+  Detail: changed on the server side only; client/src/vendor/shared/contracts/brief.ts is untouched.
+  Both copies must carry the identical change (INSIGHTS.md:48).
+
+[CRITICAL] contract-mirror client/src/vendor/shared/adapters.ts — Mirrored edit diverges
+  Detail: server added `readFileSafe(repo, relPath): Promise<string | null>`; the client copy added
+  `readFileSafe(repo, path): Promise<string>`. The added lines must match byte for byte.
+
+[HIGH] dep-audit server/pnpm-lock.yaml — 2 high-severity advisories
+  Detail: pnpm audit --audit-level high reports GHSA-xxxx (transitive via drizzle-kit).
+  Pre-existing; surfaced because this PR changes the lock file.
+
+[HIGH] test-coverage server/src/modules/pr/service.ts — Modified, no test touched
+  Detail: 84 lines changed in this module with no change to any *.test.ts / *.it.test.ts.
+```
+
 ## Final summary — BLOCKED
 
 ```
@@ -75,6 +98,20 @@ No issues found.
 
 Agents run: A Frontend (react, next, arch) · E Security
 Checked: component design, hooks, RSC boundaries, OWASP Top 10
+Deterministic: contract-mirror (no vendored files touched) · dep-audit (no lock change) · test-coverage OK
 
 Self-review passed. Safe to open a PR.
 ```
+
+## Suppressions
+
+Every `// pr-self-review-ignore: <reason>` that actually suppressed a finding gets one line
+at the bottom of any summary, so a silenced rule stays visible:
+
+```
+──────────────────────────────────────────
+SUPPRESSED (1)
+  client/src/lib/api.ts:88 — "third-party type, upstream fix tracked in #412"
+```
+
+A suppression is never silent. If no line carried the pragma, omit the section.

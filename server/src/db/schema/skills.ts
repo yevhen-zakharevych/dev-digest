@@ -17,6 +17,10 @@ export const skills = pgTable('skills', {
   enabled: boolean('enabled').notNull().default(true),
   version: integer('version').notNull().default(1),
   evidenceFiles: jsonb('evidence_files').$type<string[]>(),
+  // Project-context documents this skill contributes to every agent that loads
+  // it. Distinct from `evidenceFiles` (curated skill evidence) on purpose.
+  // Mutable config: writing it must NOT snapshot a new `skill_versions` row.
+  attachedDocs: jsonb('attached_docs').$type<string[]>(),
   createdAt: now(),
 });
 

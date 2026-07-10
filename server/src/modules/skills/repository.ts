@@ -108,6 +108,28 @@ export class SkillsRepository {
     return row;
   }
 
+  /**
+   * Persists the ordered list of repo-relative document paths attached to this
+   * skill (project-context injection order). Deliberately separate from
+   * `evidenceFiles` (curated skill evidence, set only by the Conventions
+   * Extractor at create time) — the two columns are independent.
+   *
+   * Mutable config: this NEVER bumps `version` or writes a `skill_versions`
+   * snapshot (those are body-only, see `update()`'s `bodyChanged` gate above).
+   */
+  async setAttachedDocs(
+    workspaceId: string,
+    id: string,
+    paths: string[],
+  ): Promise<SkillRow | undefined> {
+    const [row] = await this.db
+      .update(t.skills)
+      .set({ attachedDocs: paths })
+      .where(and(eq(t.skills.workspaceId, workspaceId), eq(t.skills.id, id)))
+      .returning();
+    return row;
+  }
+
   async deleteById(workspaceId: string, id: string): Promise<boolean> {
     const rows = await this.db
       .delete(t.skills)

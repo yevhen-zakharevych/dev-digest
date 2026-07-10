@@ -197,6 +197,25 @@ export class AgentsService {
   }
 
   /**
+   * Attach / detach / reorder this agent's project-context documents. `paths`
+   * is the full ordered replacement set (repo-relative paths only — never
+   * document text); an empty array detaches all. Does NOT bump the agent's
+   * config version or write an `agent_versions` snapshot — see
+   * `AgentsRepository.setAttachedDocs`. Returns undefined when the agent isn't
+   * in this workspace (route → 404).
+   */
+  async setAttachedDocs(
+    workspaceId: string,
+    agentId: string,
+    paths: string[],
+  ): Promise<Agent | undefined> {
+    const row = await this.repo.setAttachedDocs(workspaceId, agentId, paths);
+    if (!row) return undefined;
+    const stats = await this.repo.statsFor([row.id]);
+    return toAgentDto(row, stats.get(row.id)?.skillsCount ?? 0);
+  }
+
+  /**
    * Dynamic model list from the provider adapter's /models. Degrades gracefully
    * to [] if the provider key is not configured (the editor still renders).
    */

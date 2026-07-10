@@ -24,6 +24,7 @@ export function toSkillDto(row: SkillRow, agentsCount = 0): Skill {
     enabled: row.enabled,
     version: row.version,
     evidence_files: row.evidenceFiles ?? null,
+    attached_docs: row.attachedDocs ?? [],
     agents_count: agentsCount,
   };
 }
@@ -143,6 +144,23 @@ export class SkillsService {
 
   async delete(workspaceId: string, id: string): Promise<boolean> {
     return this.repo.deleteById(workspaceId, id);
+  }
+
+  /**
+   * Attach/detach/reorder the project-context documents this skill contributes
+   * to every agent that loads it. Paths only (never document text) — see
+   * `SetAttachedDocsBody`. Does not bump `version` or write a `skill_versions`
+   * snapshot; distinct from `evidence_files`.
+   */
+  async setAttachedDocs(
+    workspaceId: string,
+    id: string,
+    paths: string[],
+  ): Promise<Skill | undefined> {
+    const row = await this.repo.setAttachedDocs(workspaceId, id, paths);
+    if (!row) return undefined;
+    const stats = await this.repo.statsFor([row.id]);
+    return toSkillDto(row, stats.get(row.id)?.agentsCount ?? 0);
   }
 
   async restore(workspaceId: string, id: string, version: number): Promise<Skill | undefined> {

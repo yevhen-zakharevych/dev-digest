@@ -10,3 +10,7 @@ import { z } from 'zod';
  */
 export const IdParams = z.object({ id: z.string().uuid() });
 export type IdParams = z.infer<typeof IdParams>;
+
+/** `/repos/:repoId/...` param shape — repo id is always a uuid. */
+export const RepoParams = z.object({ repoId: z.string().uuid() });
+export type RepoParams = z.infer<typeof RepoParams>;

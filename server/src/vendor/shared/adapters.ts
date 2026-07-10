@@ -202,6 +202,13 @@ export interface GitCommit {
   date: string;
 }
 
+/** One file found by `listMarkdownFilesSafe`. `bytes` feeds a token estimate. */
+export interface RepoFileEntry {
+  /** Repo-relative, POSIX-separated path. */
+  path: string;
+  bytes: number;
+}
+
 export interface GitClient {
   clone(repo: RepoRef, url: string, opts?: CloneOptions): Promise<{ path: string }>;
   fetchPullHead(repo: RepoRef, n: number): Promise<void>;
@@ -234,6 +241,24 @@ export interface GitClient {
    * path that did NOT come from a trusted, already-verified source.
    */
   readFileSafe(repo: RepoRef, relPath: string): Promise<string | null>;
+  /**
+   * Sandboxed write of a repo-relative path in the local clone's WORKING TREE.
+   * Applies the same guard as `readFileSafe` — resolves inside the clone dir,
+   * rejects `..` traversal, absolute paths, NUL bytes, and symlink escapes.
+   * Performs NO git operation: no add, no commit, no push. A later `sync()`
+   * (`git reset --hard`) therefore discards the write if the file is tracked.
+   * Returns `false` — never throws — when the path is unsafe or the write
+   * fails, so callers can report the failure instead of crashing.
+   */
+  writeFileSafe(repo: RepoRef, relPath: string, text: string): Promise<boolean>;
+  /**
+   * Sandboxed listing of every `*.md` file in the clone's working tree, with
+   * byte sizes and no file CONTENTS read. Skips `.git`, and never descends
+   * through a symlink that leaves the clone. Returns `null` — never throws —
+   * when the clone is absent, letting callers distinguish "no clone yet" from
+   * "clone present, no markdown".
+   */
+  listMarkdownFilesSafe(repo: RepoRef): Promise<RepoFileEntry[] | null>;
   clonePathFor(repo: RepoRef): string;
 }
 

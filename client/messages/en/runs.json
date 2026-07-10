@@ -33,6 +33,7 @@
       "provider": "Provider",
       "memoryPulled": "Memory pulled",
       "specsRead": "Specs read",
+      "specsMissing": "Specs missing",
       "items": "{count, plural, one {# item} other {# items}}",
       "none": "none"
     },

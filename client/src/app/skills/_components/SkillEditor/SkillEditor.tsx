@@ -9,6 +9,7 @@ import { Badge, Icon, Tabs } from "@devdigest/ui";
 import type { Skill, SkillType } from "@devdigest/shared";
 import { ConfigTab } from "./_components/ConfigTab/ConfigTab";
 import { PreviewTab } from "./_components/PreviewTab/PreviewTab";
+import { ContextTab } from "./_components/ContextTab/ContextTab";
 import { StatsTab } from "./_components/StatsTab/StatsTab";
 import { VersionsTab } from "./_components/VersionsTab/VersionsTab";
 import { TABS } from "./constants";
@@ -65,6 +66,7 @@ export function SkillEditor({
       <div style={{ flex: 1, overflowY: "auto" }}>
         {tab === "config" && <ConfigTab skill={skill} onDeleted={onDeleted} />}
         {tab === "preview" && <PreviewTab skill={skill} />}
+        {tab === "context" && <ContextTab skill={skill} />}
         {tab === "stats" && <StatsTab skill={skill} />}
         {tab === "versions" && <VersionsTab skill={skill} />}
       </div>

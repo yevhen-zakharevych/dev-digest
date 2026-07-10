@@ -88,6 +88,13 @@ export const RunTrace = z.object({
   raw_output: z.string(),
   memory_pulled: z.array(MemoryPulled),
   specs_read: z.array(z.string()),
+  /**
+   * Attached project-context documents that could NOT be injected this run —
+   * missing from the clone, unreadable, or refused by the path guard. Recorded
+   * separately from `specs_read` so a silently-dropped spec is visible in the
+   * trace instead of just absent (the run itself is fail-soft and completes).
+   */
+  specs_missing: z.array(z.string()).default([]),
   log: z.array(RunLogLine),
 });
 export type RunTrace = z.infer<typeof RunTrace>;
