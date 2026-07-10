@@ -152,6 +152,10 @@ The skill body editor needed line numbers, monospace, "unsaved" indicator, and a
 
 **Mutation-check evidence for this task (all reverted cleanly, `git diff --stat` on `BlastRadiusCard.tsx` returned to the pre-mutation baseline both times):** (1) loosening the section's render guard from `blast.prior_prs.length > 0` to `>= 0` (`BlastRadiusCard.tsx:314`) turned the "no prior-PRs section" absence assertion red (`queryByTestId` found the always-rendered wrapper); (2) simultaneously forcing `PriorPrRow`'s `MonoLink` to always receive an `href` (`githubPrUrl(repoFullName ?? "unknown/unknown", ...)`, dropping the `repoFullName ? … : undefined` ternary at `BlastRadiusCard.tsx:185`) AND swapping the caption's `by`/`overlap` template-string order (`:189`) turned both the inert-link test and the exact-caption-text assertion (`"by octocat · 1 shared file(s)"`) red in the same run — confirms both the falsy-`repoFullName` branch and the caption's exact `{by} · {overlap}` ordering are load-bearing, not incidentally-passing assertions.
 
+### 2026-07-10 — L06 Why+Risk Brief: risk vocabulary ≠ findings-severity vocabulary
+
+**`RiskSeverity` (`high`/`medium`/`low`, the brief's own risk vocabulary, `vendor/shared/contracts/brief.ts`) is a DIFFERENT enum from `vendor/ui/primitives/tokens.ts` `UISeverity` (`CRITICAL`/`WARNING`/`SUGGESTION`/`INFO`, the review-findings vocabulary).** Reusing `SeverityBadge`/`SEV` for the brief's risk banner is a category error — wrong enum, wrong color scale — even though both nominally mean "how bad". The brief's independence from review findings (AC-11) is enforced at the type/vocabulary level, not just behaviorally. `PrBriefCard.helpers.ts` builds a separate `RISK_LEVEL_META` table; do NOT route brief risk through the findings-severity UI primitives. (Also: `RunCostBadge.formatCost` uses magnitude-dependent decimals — 4 below $0.01, 3 below $1, 2 above — so compute expected cost strings from the helper, don't eyeball them; and there is zero repo precedent for RTL `toHaveStyle` against a CSS `var()` — assert `element.style.color` via a `data-testid` instead.)
+
 ## Open Questions
 
 _No entries yet._

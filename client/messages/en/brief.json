@@ -19,5 +19,34 @@
     "blame": "blame",
     "noHistory": "No history available for this line.",
     "noCommits": "No commits found for this line."
+  },
+  "card": {
+    "title": "PR Brief"
+  },
+  "riskLevel": {
+    "high": "High risk",
+    "medium": "Medium risk",
+    "low": "Low risk"
+  },
+  "reviewFocus": "Review focus — read these first",
+  "reviewScore": "Review score",
+  "findingsMeta": "{count, plural, one {# finding} other {# findings}}",
+  "blockersMeta": " · {count, plural, one {# blocker} other {# blockers}}",
+  "generate": "Generate brief",
+  "regenerate": "Regenerate",
+  "regenerating": "Regenerating…",
+  "stale": "Stale — PR has new commits",
+  "notGenerated": {
+    "title": "No brief yet",
+    "body": "Generate a why + risk brief to see what this PR does, why, and how risky it is."
+  },
+  "degraded": {
+    "badge": "Degraded",
+    "title": "Couldn't generate the brief",
+    "genericBody": "Something went wrong generating the brief. Try regenerating.",
+    "reason": {
+      "model_failed": "The model call failed. Try regenerating.",
+      "no_inputs": "Not enough information was available to generate a brief."
+    }
   }
 }
