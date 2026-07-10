@@ -4,6 +4,7 @@ import {
   text,
   integer,
   boolean,
+  doublePrecision,
   jsonb,
   timestamp,
   vector,
@@ -117,10 +118,28 @@ export const references = pgTable(
   }),
 );
 
+/**
+ * `onboarding` — one persisted "Onboarding for <repo>" artifact per repo
+ * (PK `repoId`; Regenerate replaces it, last-write-wins). `json` holds the
+ * five fixed sections. The freshness/metadata columns below are populated on a
+ * successful generation and read back to build the response wrapper:
+ * `indexedSha` is compared against `getIndexState(repoId).lastIndexedSha` for
+ * fresh/stale; `filesIndexed` drives the subtitle; `degraded`/`degradedReason`
+ * mark a skeleton artifact; `model`/`costUsd` are the audit trail (cost is
+ * never surfaced in the UI). All new columns are nullable — the table is empty
+ * (no backfill), and the degraded path may write a skeleton with no model.
+ */
 export const onboarding = pgTable('onboarding', {
   repoId: uuid('repo_id')
     .primaryKey()
     .references(() => repos.id, { onDelete: 'cascade' }),
   json: jsonb('json').notNull(),
+  indexedSha: text('indexed_sha'),
+  filesIndexed: integer('files_indexed'),
+  status: text('status'),
+  degraded: boolean('degraded'),
+  degradedReason: text('degraded_reason'),
+  model: text('model'),
+  costUsd: doublePrecision('cost_usd'),
   generatedAt: timestamp('generated_at', { withTimezone: true }).defaultNow().notNull(),
 });

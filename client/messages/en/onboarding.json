@@ -2,6 +2,7 @@
   "title": "Onboarding Tour",
   "sections": "Sections",
   "sectionCount": "{count} sections",
+  "onThisPage": "On this page",
   "regenerate": "Regenerate",
   "regenerating": "Regenerating…",
   "unknownError": "Unknown error",
@@ -13,5 +14,55 @@
   },
   "loadError": {
     "title": "Couldn’t load the onboarding tour"
+  },
+  "header": {
+    "titlePrefix": "Onboarding for ",
+    "subtitle": "index of {count} files · refreshed {relative}",
+    "justNow": "just now",
+    "minutesAgo": "{minutes}m ago",
+    "hoursAgo": "{hours}h ago",
+    "daysAgo": "{days}d ago",
+    "share": "Share",
+    "shareTooltip": "Sharing isn't available yet",
+    "statusFresh": "Fresh",
+    "statusStale": "Stale — the index has moved on. Regenerate to refresh.",
+    "anchorNavLabel": "Onboarding sections"
+  },
+  "sectionNav": {
+    "architecture": "Architecture",
+    "critical_paths": "Critical Paths",
+    "run_locally": "Run Locally",
+    "reading_path": "Reading Path",
+    "first_tasks": "First Tasks"
+  },
+  "degraded": {
+    "badge": "Degraded",
+    "reason": {
+      "flag_off": "Repo intelligence is turned off for this workspace.",
+      "index_failed": "The last index attempt failed.",
+      "index_partial": "The repo index is only partially built.",
+      "repo_too_large": "This repo is too large to fully index yet.",
+      "no_data": "No index data is available for this repo yet."
+    }
+  },
+  "runLocally": {
+    "copyStep": "Copy command",
+    "copiedStep": "Copied!"
+  },
+  "links": {
+    "open": "Open"
+  },
+  "section": {
+    "collapse": "Collapse section",
+    "expand": "Expand section"
+  },
+  "complexity": {
+    "low": "Low",
+    "medium": "Medium",
+    "high": "High"
+  },
+  "progress": {
+    "title": "Generating onboarding tour…",
+    "hint": "Waiting for the generation to start…"
   }
 }

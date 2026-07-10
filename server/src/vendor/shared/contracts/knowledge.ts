@@ -46,6 +46,48 @@ export const Onboarding = z.object({
 });
 export type Onboarding = z.infer<typeof Onboarding>;
 
+/**
+ * Closed set of reason codes for a degraded/skeleton onboarding artifact,
+ * aligned to the repo-intel `DegradedReason` vocabulary. The client maps each
+ * to an i18n string (never renders the raw code).
+ */
+export const OnboardingDegradedReason = z.enum([
+  'flag_off',
+  'index_failed',
+  'index_partial',
+  'repo_too_large',
+  'no_data',
+]);
+export type OnboardingDegradedReason = z.infer<typeof OnboardingDegradedReason>;
+
+/**
+ * The onboarding read/generate response wrapper (server → client). Wraps the
+ * five fixed sections with freshness + degraded metadata. `GET` returns
+ * `OnboardingResponse | null` — `null` when no artifact has ever been
+ * generated for the repo; the required fields below apply only when an
+ * artifact exists.
+ *
+ * - `status`: `fresh` when the stored indexed SHA == the repo's current
+ *   indexed SHA, `stale` once the indexed SHA has advanced.
+ * - `degraded` / `degradedReason`: a skeleton was returned (missing/partial/
+ *   degraded/failed index or a model-call failure); no model call was made.
+ * - `indexedSha` / `filesIndexed`: drive the subtitle ("index of N files").
+ * - `generatedAt`: when the narrative was last produced (the "refreshed X ago").
+ * - `generating`: optional in-flight flag — a full generation is currently
+ *   running for this repo (lets the client re-seed SSE state after a reload).
+ */
+export const OnboardingResponse = z.object({
+  sections: z.array(OnboardingSection),
+  status: z.enum(['fresh', 'stale']),
+  degraded: z.boolean(),
+  degradedReason: OnboardingDegradedReason.nullish(),
+  indexedSha: z.string(),
+  filesIndexed: z.number().int(),
+  generatedAt: z.string(),
+  generating: z.boolean().optional(),
+});
+export type OnboardingResponse = z.infer<typeof OnboardingResponse>;
+
 // ---- Eval ----
 export const EvalPerTrace = z.object({
   name: z.string(),
