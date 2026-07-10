@@ -4,7 +4,7 @@ Reusable AI skills that provide specialized knowledge and workflows. Canonical l
 
 ## Catalog
 
-Sixteen skills. Keep this table in sync with the directories — nothing validates it,
+Seventeen skills. Keep this table in sync with the directories — nothing validates it,
 so a stale row is invisible until an agent trusts it.
 
 | Skill | Scope | Description |
@@ -25,6 +25,7 @@ so a stale row is invisible until an agent trusts it.
 | [pr-self-review](pr-self-review/SKILL.md) | Process | Local pre-PR gate. Routes changed files to the right skills; blocks on any CRITICAL finding |
 | [engineering-insights](engineering-insights/SKILL.md) | Process | Appends non-obvious findings to the touched module's `INSIGHTS.md` |
 | [fleet-retro](fleet-retro/SKILL.md) | Process | Post-mortem of a multi-agent run: waves, tokens, duplicated context, next-run changes |
+| [cross-model-plan-review](cross-model-plan-review/SKILL.md) | Process | Second opinion on a `docs/plans/*.md` from a non-Anthropic model (via OpenRouter), cast as a skeptical staff engineer |
 
 ## What Are Skills?
 
