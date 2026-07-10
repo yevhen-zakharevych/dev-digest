@@ -13,7 +13,7 @@ Shared with the team via version control.
 | [implementer](implementer.md) | Sonnet | write (`Read/Edit/Write/Bash/Grep/Glob/Skill`) | Implements **one scoped task** from a plan (UI or backend), applies the skills its card names, keeps existing tests green, self-reviews only the code it wrote. A failure in a file it does not own is reported, never fixed. Returns insights; writes no `INSIGHTS.md`. |
 | [researcher](researcher.md) | Sonnet | read-only | Finds information in the codebase or on the web and returns a structured, scannable report. |
 | [test-writer](test-writer.md) | Sonnet | write (`Read/Edit/Write/Bash/Grep/Glob/Skill`) | Writes automated tests for UI (Vitest + RTL) or backend (Vitest unit + `*.it.test.ts` testcontainers). **Spawn it with the spec path + the `AC-N` ids to cover** — expected values come from the spec, never from the implementation. Runs the suite to green then mutation-checks; never weakens an assertion to pass. Returns insights; writes no `INSIGHTS.md`. |
-| [architecture-reviewer](architecture-reviewer.md) | Sonnet | read-only (`permissionMode: plan`) | Reviews a diff for **architectural** quality (layering, dependency direction, module boundaries, misplaced business logic) — **not** line bugs, style, security, or perf; it will skip those by design (use `/code-review high` and `/security-review`). Returns a findings report; empty is a valid result. |
+| [architecture-reviewer](architecture-reviewer.md) | Opus | read-only (`permissionMode: plan`) | Reviews a diff for **architectural** quality (layering, dependency direction, module boundaries, misplaced business logic) — **not** line bugs, style, security, or perf; it will skip those by design (use `/code-review high` and `/security-review`). Returns a findings report; empty is a valid result. |
 | [plan-verifier](plan-verifier.md) | Sonnet | read-only (`permissionMode: plan`) | Given a plan **and** the code written, verifies every requirement is actually implemented — one row per requirement, `file:line` evidence for each MET, four statuses (MET/PARTIAL/MISSING/CANNOT VERIFY). Coverage, not code quality. |
 | [doc-writer](doc-writer.md) | Sonnet | write (`Read/Edit/Write/Bash/Grep/Glob/Skill`) | Documents shipped functionality, turns plans into docs, converts material into docs with Mermaid diagrams. Classifies by Diátaxis, knows where docs live in the repo, grounds every claim in `file:line`. |
 
@@ -84,7 +84,7 @@ request + design sources → spec-creator (Opus, writes specs/** only)
       ▼
    ② three read-only passes, SPAWNED IN ONE MESSAGE (they are independent):
       ├─ plan-verifier (Sonnet)        — is every AC-N actually implemented?
-      ├─ architecture-reviewer (Sonnet) — layering, boundaries, misplaced logic
+      ├─ architecture-reviewer (Opus)   — layering, boundaries, misplaced logic
       └─ /code-review high (skill)     — correctness bugs   ← see "the correctness gap"
       ▼
    ③ one fix round — amended task cards, never a full-plan re-onboard
@@ -145,10 +145,10 @@ real cross-module integration or architectural judgment:**
 | Mechanical edit, ≤3 files, no new logic (e.g. flip constants, add i18n strings) | **Haiku** |
 | Self-contained, well-specified helpers / client hooks / single-surface UI | **Sonnet** |
 | Read-only research | **Sonnet** |
-| Requirement-coverage verification (`plan-verifier`) | **Sonnet** |
+| Requirement-coverage verification (`plan-verifier`) | **Sonnet** (structured AC-N tracing — Opus is marginal gain at 2× cost) |
 | Hard cross-module integration (adapters + `container.ts` + wiring) | **Opus** |
 | Planning (spec authoring + implementation planning) | **Opus** |
-| Architecture review | **Sonnet** (cost decision 2026-07-10 — Opus reserved for planning) |
+| Architecture review | **Opus** (restored 2026-07-10 — quality over token economy) |
 
 **Model floor (never break):** any task that touches `platform/container.ts`,
 adapters, or cross-module wiring runs on **Opus** regardless of size.

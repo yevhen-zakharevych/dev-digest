@@ -6,7 +6,7 @@ description: >-
   logic — NOT line-level bugs, style, or naming. Read-only; returns a
   findings report to the caller, it does not write code or open a PR.
 tools: Read, Grep, Glob, Bash, Skill
-model: sonnet
+model: opus
 permissionMode: plan
 skills:
   - onion-architecture
