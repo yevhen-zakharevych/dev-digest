@@ -1,131 +1,117 @@
 # Security Checklists — Quick Reference
 
-Compact checklists for common security scenarios. Use these for self-review before committing or creating a PR.
+Compact checklists for common security scenarios in DevDigest's actual stack (Fastify, Drizzle,
+Postgres, Next.js — no Express/MongoDB/JWT). Use these for self-review before committing or
+creating a PR.
 
 ---
 
 ## Pre-Commit Security Self-Review
 
-Run through this before every commit that touches server code, auth logic, or user input handling.
+Run through this before every commit that touches `server/src`, adapters, or user/PR input
+handling.
 
 - [ ] No hardcoded secrets, passwords, or API keys in code
-- [ ] No `.env` files staged for commit
-- [ ] User input is validated server-side (not just client-side)
-- [ ] Database queries use parameterized/typed inputs (no raw operator injection)
-- [ ] Error responses don't leak stack traces or internal paths
-- [ ] Auth middleware is applied to all protected endpoints
-- [ ] File uploads have MIME type validation, size limits, and safe naming
-- [ ] No `dangerouslySetInnerHTML` without DOMPurify sanitization
-- [ ] No `eval()`, `Function()`, or `exec()` with user input
-- [ ] Sensitive data is redacted in log output
+- [ ] No `.env` files or `LocalSecretsProvider` override file staged for commit
+- [ ] User/PR input is validated server-side via a Zod schema (not just client-side)
+- [ ] No `sql.raw()`/`sql.identifier()` fed unvalidated input (Drizzle queries use `sql\`\``
+      value interpolation or the query builder instead)
+- [ ] Error responses don't leak stack traces or internal paths (goes through
+      `app.setErrorHandler`, not a hand-rolled catch)
+- [ ] Every route resolves `{ workspaceId, userId }` via `getContext()` and every query it
+      calls filters by `workspaceId`
+- [ ] File uploads have an extension allowlist and don't write attacker-controlled paths to disk
+- [ ] No `dangerouslySetInnerHTML` fed anything but a hardcoded constant, without DOMPurify
+- [ ] No `exec()`/shell-string subprocess calls with user input (`execFile`/`spawn` array-form
+      only)
+- [ ] New untrusted input reaching an LLM prompt goes through `wrapUntrusted()`
+- [ ] Sensitive data is redacted in log output (Pino `redact`, not manual field-checking)
 
 ---
 
 ## New API Endpoint Checklist
 
-When adding a new Express route/controller.
+When adding a new Fastify route (`modules/<name>/routes.ts`).
 
-### Authentication & Authorization
-- [ ] Endpoint is behind `auth` middleware (if not public)
-- [ ] Role check applied if endpoint is admin-only (`req.user.role === 'admin'`)
-- [ ] Resource ownership verified for update/delete operations (IDOR prevention)
-- [ ] Rate limiter applied (especially for login, comments, generation, uploads)
+### Authorization
+- [ ] Route calls `getContext(app.container, req)` and gets `{ workspaceId, userId }`
+- [ ] Service-layer query filters by `workspaceId` — not just the route param `:id`
+- [ ] Resource in another workspace 404s, doesn't 403 (don't leak existence)
+- [ ] Rate limiter applied if the route is expensive (LLM call, upload, review run) —
+      `config: { rateLimit: { max, timeWindow } }` tighter than the 120/min global
 
 ### Input Validation
-- [ ] All expected fields validated (required, type, length, format)
-- [ ] Validation middleware runs BEFORE the controller
-- [ ] Input types explicitly cast (`String()`, `Number()`, `mongoose.Types.ObjectId()`)
-- [ ] Only expected fields extracted from `req.body` (no spread operator)
-- [ ] Query parameters validated and cast before use in MongoDB queries
+- [ ] `{ schema: { body, params, querystring } }` set with a Zod schema — this IS the field
+      allowlist, don't accept `req.body` unchecked
+- [ ] Route registered via `app.withTypeProvider<ZodTypeProvider>()`
+- [ ] Only expected fields extracted/used — never spread `req.body` into a Drizzle
+      `.insert()`/`.values()` call
 
 ### Error Handling
-- [ ] Controller wrapped in `asyncHandler` (or has try-catch)
-- [ ] Specific error codes returned (400, 401, 403, 404, 500)
-- [ ] Error messages are generic in production (no internal details)
-- [ ] Resource not found returns 404 (not 500)
-- [ ] Duplicate key errors handled gracefully (not raw Mongoose error)
+- [ ] Errors thrown as `AppError` subclasses (`platform/errors.ts`), not hand-rolled
+      `reply.status().send()`
+- [ ] Resource-not-found returns 404 via `NotFoundError`, not a generic 500
+- [ ] No response ever includes `err.stack` or a raw caught object
 
 ### Response Security
-- [ ] Response only includes fields the user should see
-- [ ] Password hash never included in response (`toJSON` method strips it)
-- [ ] Internal IDs not leaked if not needed by client
-- [ ] Timestamps and metadata appropriate for the user's role
+- [ ] Response schema only includes fields the client should see
+- [ ] Secrets never appear in a response body (they live in `LocalSecretsProvider`, not a
+      DB column, so this should be structurally impossible — verify nothing changed that)
 
 ---
 
 ## New Dependency Checklist
 
-Before adding a package to `package.json`.
+Before adding a package to `server/package.json` or `client/package.json`.
 
-- [ ] **Need check**: Can this be done with built-in Node.js APIs or existing dependencies?
-- [ ] **Audit**: `npm audit` shows no known vulnerabilities for this package
+- [ ] **Need check**: Can this be done with an existing dependency or a built-in Node/Fastify
+      API?
+- [ ] **Audit**: `pnpm audit` shows no known vulnerabilities for this package
 - [ ] **Maintenance**: Last commit within 6 months, responsive to issues
 - [ ] **Popularity**: Reasonable download count (>10K weekly for production deps)
 - [ ] **Scope**: Package only accesses what it needs (no unnecessary network/fs/env access)
-- [ ] **Name**: Package name is correct (not a typosquat — `expres` vs `express`)
+- [ ] **Name**: Package name is correct (not a typosquat)
 - [ ] **License**: Compatible license (MIT, Apache 2.0, BSD — avoid GPL for proprietary code)
-- [ ] **Size**: Bundle size reasonable for what it does (check bundlephobia.com)
-- [ ] **Lock file**: `package-lock.json` updated and committed after install
+- [ ] **Lockfile**: pnpm lockfile updated and committed after install — each package
+      (`server/`, `client/`, `reviewer-core/`) owns its own, this is NOT a workspace
 
 ---
 
 ## File Upload Checklist
 
-When implementing or modifying file upload functionality.
+When implementing or modifying multipart upload functionality (`@fastify/multipart`).
 
 ### Configuration
-- [ ] MIME type allowlist (whitelist, not blacklist)
-- [ ] File size limit set (e.g., 5MB)
-- [ ] Single file limit per request (`files: 1`)
-- [ ] Upload directory exists and has correct permissions
-- [ ] Upload directory is NOT in the source tree (or is gitignored)
+- [ ] Size/count limits set at plugin registration (`{ limits: { fileSize, files } }`), not
+      left to defaults
+- [ ] Extension allowlist checked on the filename before any parsing
+- [ ] Prefer reading into memory over writing to disk — if disk write is genuinely needed,
+      see below
 
-### Naming & Storage
-- [ ] Filename generated server-side (timestamp + random, not user-provided)
-- [ ] File extension extracted from original and lowercased
-- [ ] No path traversal possible (`../` in filename)
-- [ ] Upload directory path resolved and validated before operations
+### If writing to disk (avoid unless necessary — the current upload route never does)
+- [ ] Filename generated server-side, never `data.filename` used directly as a path segment
+- [ ] `path.basename()` strips any directory components before use
+- [ ] Resolved path validated to stay within the intended upload directory before any
+      read/write/delete
 
-### Cleanup
-- [ ] Uploaded file deleted when associated resource is deleted
-- [ ] File deletion validates path is within upload directory
-- [ ] Failed uploads are cleaned up (multer error handler)
-- [ ] Old files replaced when resource is updated
-
-### Serving
-- [ ] Static file serving configured with `crossOriginResourcePolicy`
-- [ ] No directory listing enabled for upload directory
-- [ ] Appropriate cache headers set for uploaded files
+### Archive handling (zip/tar)
+- [ ] Only read specific named entries into memory — never `extractAllTo`-style bulk disk
+      extraction with attacker-controlled entry names
+- [ ] Non-consumed entries are listed (for user visibility), never extracted
 
 ---
 
-## Authentication Flow Checklist
+## Prompt-Injection Checklist
 
-When modifying login, registration, or token handling.
+When adding a new input that reaches `assemblePrompt()` (`reviewer-core/src/prompt.ts`).
 
-### Login
-- [ ] User found by email with `isActive: true` check
-- [ ] Password compared with bcrypt (not in database query)
-- [ ] Generic error message for both "user not found" and "wrong password"
-- [ ] `loginLimiter` rate limiting applied
-- [ ] JWT signed with env secret, explicit algorithm, and expiration
-- [ ] JWT payload contains only necessary claims (userId, email, name, role)
-- [ ] Password hash never included in response
-
-### Token Verification (auth middleware)
-- [ ] Token extracted from `Authorization: Bearer <token>` header
-- [ ] `jwt.verify()` used (NOT `jwt.decode()`)
-- [ ] Expired token returns 401 with "Token expired" message
-- [ ] Invalid token returns 401 with "Invalid token" message
-- [ ] Fail-closed: `next()` only called on successful verification
-- [ ] Decoded user data set on `req.user`
-
-### Password Storage
-- [ ] bcrypt with salt rounds >= 10
-- [ ] Password hashed in pre-save hook (only if modified)
-- [ ] `comparePassword` method on User model
-- [ ] `toJSON` strips password from all responses
-- [ ] Password field has `minlength` validation
+- [ ] Input is wrapped with `wrapUntrusted(label, content)`, not concatenated raw
+- [ ] No keyword/regex denylist added anywhere in the prompt-assembly path — the defense is
+      the single `INJECTION_GUARD` rule, uniformly applied
+- [ ] Any trusted instruction related to this input (like `INTENT_RULE`) sits OUTSIDE the
+      `wrapUntrusted` fence, not mixed into the untrusted content
+- [ ] If the content has a natural length ceiling risk (PR description, comment body), it's
+      capped before assembly (see `MAX_PR_DESCRIPTION_CHARS` for the existing pattern)
 
 ---
 
@@ -135,56 +121,50 @@ Before deploying to production.
 
 ### Environment
 - [ ] `NODE_ENV=production` is set
-- [ ] All secrets in environment variables (not in code)
-- [ ] Default seed credentials changed or removed
-- [ ] Debug/development middleware disabled
+- [ ] All secrets entered via the settings UI or environment, read only through
+      `LocalSecretsProvider` — never hardcoded
 - [ ] `.env.example` doesn't contain real secrets
 
 ### HTTP Security
-- [ ] Helmet.js enabled with appropriate configuration
-- [ ] CORS configured with explicit production origin (not wildcard)
-- [ ] HTTPS enforced (TLS termination at load balancer or reverse proxy)
-- [ ] Rate limiting active on all API routes
-- [ ] Body parser size limit set (e.g., 10MB)
-- [ ] `trust proxy` set correctly if behind reverse proxy
+- [ ] Helmet enabled (default config is fine for this JSON-only API)
+- [ ] CORS configured with the explicit production `webOrigin`, not a wildcard
+- [ ] HTTPS enforced (TLS termination at load balancer/reverse proxy)
+- [ ] `@fastify/rate-limit` active (it's disabled only in `NODE_ENV=test`)
+- [ ] `bodyLimit` set on the Fastify instance (1MB default in this repo)
 
 ### Database
-- [ ] MongoDB authentication enabled (username/password or x.509)
-- [ ] MongoDB TLS enabled for connections
-- [ ] MongoDB port not exposed to internet
-- [ ] Connection string in environment variable
-- [ ] Connection timeout configured
+- [ ] Postgres requires auth + TLS in production
+- [ ] Postgres port not exposed to the internet outside the local dev `docker-compose.yml`
+      network
+- [ ] Connection string read via config/secrets, not hardcoded
+- [ ] Migrations applied (`pnpm db:migrate`) — NOT run automatically on boot in this repo
 
 ### Error Handling
-- [ ] Global error handler active
-- [ ] Stack traces hidden in production responses
-- [ ] 404 handler for unmatched routes
-- [ ] Async error wrapper on all controllers
-- [ ] Process exit on critical failures (DB connection loss)
+- [ ] `app.setErrorHandler` active and registered before feature modules
+- [ ] Stack traces never appear in a response, in any `NODE_ENV`
+- [ ] `/health` (liveness) and `/health/ready` (readiness, DB check) both respond correctly
 
 ### Logging & Monitoring
-- [ ] Request logging active with sensitive data redaction
-- [ ] Error logging captures context (method, URL, IP, userId)
-- [ ] Log files stored securely (not publicly accessible)
-- [ ] Log rotation configured to prevent disk exhaustion
-- [ ] Auth events logged (login success, failure, token rejection)
+- [ ] Pino `redact` configured for `authorization`/`cookie` header paths
+- [ ] Structured JSON logging active (non-development)
+- [ ] Log storage not publicly accessible
 
 ### Dependencies
-- [ ] `npm audit` passes with no critical/high vulnerabilities
-- [ ] `package-lock.json` committed and up to date
-- [ ] No unnecessary dev dependencies in production
+- [ ] `pnpm audit` passes with no critical/high vulnerabilities in each package
+      (`server/`, `client/`, `reviewer-core/` — each has its own lockfile)
+- [ ] No unnecessary dev dependencies bundled into production
 
 ---
 
 ## Security Incident Response Checklist
 
-If a security vulnerability is discovered in production.
+If a security vulnerability is discovered in production. Stack-independent.
 
 ### Immediate (0-1 hours)
 - [ ] Assess severity and scope of the vulnerability
 - [ ] Determine if it's actively being exploited (check logs)
-- [ ] If credentials exposed: rotate all affected secrets immediately
-- [ ] If data breach: identify affected records and users
+- [ ] If credentials exposed: rotate all affected secrets in `LocalSecretsProvider` immediately
+- [ ] If data breach: identify affected records/workspaces
 - [ ] Create a private issue/ticket to track the incident
 
 ### Short-term (1-24 hours)
@@ -192,15 +172,14 @@ If a security vulnerability is discovered in production.
 - [ ] Deploy the fix to production
 - [ ] Verify the fix resolves the vulnerability
 - [ ] Review logs for any exploitation attempts
-- [ ] If user data affected: prepare notification plan
 
 ### Follow-up (1-7 days)
 - [ ] Conduct root cause analysis
-- [ ] Add automated test that would catch this vulnerability
-- [ ] Update security checklists if a gap was found
-- [ ] Review similar code for the same vulnerability pattern
-- [ ] Document lessons learned
+- [ ] Add an automated test that would catch this vulnerability
+- [ ] Update this skill's checklists if a gap was found
+- [ ] Review similar code (other routes, other adapters) for the same pattern
 
 ---
 
-*Use these checklists as living documents. Update them as new patterns emerge or the stack evolves.*
+*Use these checklists as living documents. Update them as new patterns emerge or the stack
+evolves.*
