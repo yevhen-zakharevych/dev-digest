@@ -74,7 +74,13 @@ issue is non-blocking with a stated assumption in §4.
   Project Context docs across ALL enabled agents** (each enabled agent's own attached docs ∪ its
   enabled skills' attached docs, deduped by repo-relative path), read fresh — NOT "the first
   enabled agent". If zero enabled agents, the brief generates with no `## Project context` input,
-  exactly as a review with none. Locked into §7 `assemble.ts` and S2 acceptance.
+  exactly as a review with none. Locked into §7 `assemble.ts` and S2 acceptance. **Note (flagged
+  by §13 cross-model review):** the spec's own AC-3 prose
+  (`specs/2026-07-10-why-risk-brief.md:167-174`) still reads "default review agent" and was not
+  itself amended when the product owner resolved this on 2026-07-10 — only this plan carries the
+  "union across all enabled agents" redefinition. A reader who opens the spec without this plan
+  will see stale AC-3 wording. **Not fixed here** (this plan does not own spec edits); flagged so
+  the spec gets a follow-up annotation/update pass reconciling AC-3 with the resolved decision.
 - **AC-5 vs the §Assumptions/§Non-goals text — consistency ambiguity, RESOLVED.** AC-5 (a hard
   EARS criterion) says the model resolves via the **`risk_brief` feature-model**; the score
   Non-goal / Q3 resolution (`…:104,570`) also mentions "that [default] agent's model override".
@@ -372,6 +378,18 @@ and S2/C1 are different modules with distinct onboarding sets):
 
 Every AC-1..AC-20 maps to ≥1 task; every task (S1, S2, C1) maps to ≥1 AC. No orphans.
 
+**Clarifications from cross-model review (§13):**
+- **AC-6 mapping** — "S1 (columns) + S2 (record)" means S1 provides **schema prerequisites
+  only** (the `head_sha`/`model`/`cost_usd`/`tokens_in`/`tokens_out` columns); S1 has no
+  behavioural obligation toward AC-6. S2 alone is responsible for the observable — and AC-6 is
+  satisfied only when **both** the `RunLogger` call **and** the `pr_brief` row write happen for
+  the same generation (not either alone).
+- **AC-20 mapping** — S2 satisfies AC-20's rate-limit *configuration* (the `config.rateLimit`
+  override on the generate route); per §10, the *live-429* half of AC-20's observable is not
+  exercised by this repo's test suite because rate limiting is disabled under `NODE_ENV=test` —
+  the test asserts the override's presence/values, not a live 429 response. This is a deliberate
+  test-environment gap, not an unmet AC.
+
 ## 10. Testing Strategy
 
 Canonical per-module commands: `TESTING.md:63-74` (each task's **Tests to run** cell names its
@@ -437,3 +455,26 @@ exact command). The planner runs none of them (Hard rule 1).
 - [ ] No test asserts LLM `what`/`why`/explanation/reason prose; deterministic facts only.
 - [ ] `/security-review` clears S2 (untrusted wrapping, workspace scoping, no SSRF from
       PR-content-derived URLs, no wholesale logging of input/issue/spec bodies).
+
+## 13. Cross-Model Review (openai/gpt-5.1, 2026-07-10)
+
+Run via `/cross-model-plan-review docs/plans/L06-why-risk-brief.md` — a non-Anthropic model
+(GPT-5.1, over OpenRouter) read this plan plus its source spec cast as a skeptical staff
+engineer, to catch what a same-family (Claude) re-read would be more likely to rubber-stamp.
+
+**Verdict: ready_with_notes.** No structural blockers; all findings are documentation/
+traceability tightening, not rework. Summary from the reviewer: "unusually thorough in
+decomposition, sequencing, and parallel safety … S1 cleanly owns the dual-vendored contract and
+migration, S2 and C1 are disjoint server/client modules gated on S1, and all ACs are explicitly
+mapped with no orphans."
+
+| # | Severity | Finding | Disposition |
+|---|----------|---------|--------------|
+| 1 | WARNING | AC-3's spec prose still says "default review agent" while the plan (§3) redefines it to "union across all enabled agents" (product-owner-confirmed 2026-07-10) — the spec text itself was never amended, so a reader of the spec alone sees stale wording. | **Flagged, not fixed here** — annotated in §3 with a pointer to the exact stale spec lines; a spec-edit follow-up is out of this plan's scope. |
+| 2 | WARNING | AC-6 is satisfied by S2 recording to **both** `RunLogger` and the `pr_brief` row, but nothing in the plan states a test must fail if only one happens. | **Fixed** — explicit "both, not either" language added to the §9 mapping notes. |
+| 3 | SUGGESTION | §9's "AC-6: S1 (columns) + S2 (record)" reads as if S1 carries partial behavioural responsibility for AC-6, when it only supplies schema. | **Fixed** — §9 mapping notes now state S1's role is schema-only. |
+| 4 | SUGGESTION | AC-20's stated observable is "exceeding it returns 429," but S2's actual test asserts `config.rateLimit` presence (rate limiting is disabled under `NODE_ENV=test`) — a test-writer reading only the AC text could expect a live 429 test. | **Fixed** — §9 mapping notes now call out this is a deliberate test-environment gap, not an unmet AC. |
+
+Findings 2–4 were folded directly into §9 (`AC-N → Task coverage`) as clarification notes.
+Finding 1 is spec-hygiene (the spec, not this plan, needs the edit) and is called out in §3
+instead of silently fixed.
