@@ -46,6 +46,48 @@ export const Onboarding = z.object({
 });
 export type Onboarding = z.infer<typeof Onboarding>;
 
+/**
+ * Closed set of reason codes for a degraded/skeleton onboarding artifact,
+ * aligned to the repo-intel `DegradedReason` vocabulary. The client maps each
+ * to an i18n string (never renders the raw code).
+ */
+export const OnboardingDegradedReason = z.enum([
+  'flag_off',
+  'index_failed',
+  'index_partial',
+  'repo_too_large',
+  'no_data',
+]);
+export type OnboardingDegradedReason = z.infer<typeof OnboardingDegradedReason>;
+
+/**
+ * The onboarding read/generate response wrapper (server → client). Wraps the
+ * five fixed sections with freshness + degraded metadata. `GET` returns
+ * `OnboardingResponse | null` — `null` when no artifact has ever been
+ * generated for the repo; the required fields below apply only when an
+ * artifact exists.
+ *
+ * - `status`: `fresh` when the stored indexed SHA == the repo's current
+ *   indexed SHA, `stale` once the indexed SHA has advanced.
+ * - `degraded` / `degradedReason`: a skeleton was returned (missing/partial/
+ *   degraded/failed index or a model-call failure); no model call was made.
+ * - `indexedSha` / `filesIndexed`: drive the subtitle ("index of N files").
+ * - `generatedAt`: when the narrative was last produced (the "refreshed X ago").
+ * - `generating`: optional in-flight flag — a full generation is currently
+ *   running for this repo (lets the client re-seed SSE state after a reload).
+ */
+export const OnboardingResponse = z.object({
+  sections: z.array(OnboardingSection),
+  status: z.enum(['fresh', 'stale']),
+  degraded: z.boolean(),
+  degradedReason: OnboardingDegradedReason.nullish(),
+  indexedSha: z.string(),
+  filesIndexed: z.number().int(),
+  generatedAt: z.string(),
+  generating: z.boolean().optional(),
+});
+export type OnboardingResponse = z.infer<typeof OnboardingResponse>;
+
 // ---- Eval ----
 export const EvalPerTrace = z.object({
   name: z.string(),
@@ -128,6 +170,13 @@ export const Skill = z.object({
   enabled: z.boolean(),
   version: z.number().int(),
   evidence_files: z.array(z.string()).nullish(),
+  /**
+   * Ordered repo-relative paths of project-context documents attached to this
+   * skill. Every agent that loads this skill inherits them. Paths only — the
+   * document text is read fresh from the clone at run time, never stored here.
+   * Mutable config: changing it does NOT snapshot a new skill version.
+   */
+  attached_docs: z.array(z.string()).default([]),
   /**
    * Number of agents in this workspace that have this skill linked
    * (regardless of per-link enabled). Counted via `agent_skills`; the card on
@@ -298,6 +347,15 @@ export const Agent = z.object({
   // Inject repo-intel context (repo skeleton + callers + rank note) into this
   // agent's review prompt. Default on; gated again by the global flag.
   repo_intel: z.boolean().default(true),
+  /**
+   * Ordered repo-relative paths of project-context documents attached to this
+   * agent. At run time these are unioned with the docs contributed by the
+   * agent's ENABLED skills, deduped by path (first wins), read fresh from the
+   * clone, and injected into the untrusted `## Project context` prompt slot.
+   * Paths only — never the document text. Mutable config: changing it does NOT
+   * snapshot a new agent version (so it is absent from `AgentVersionConfig`).
+   */
+  attached_docs: z.array(z.string()).default([]),
   skills_count: z.number().int().default(0),
 });
 export type Agent = z.infer<typeof Agent>;

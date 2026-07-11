@@ -4,6 +4,7 @@ import React from "react";
 import { useTranslations } from "next-intl";
 import { SectionLabel, Button, Skeleton } from "@devdigest/ui";
 import { DiffViewer, type DiffCommentApi } from "@/components/diff-viewer";
+import { diffFileAnchorId } from "@/components/diff-viewer/helpers";
 import { SmartDiffViewer } from "../SmartDiffViewer/SmartDiffViewer";
 import { usePrComments, useCreatePrComment, usePrReviews } from "@/lib/hooks/reviews";
 import { useSmartDiff } from "@/lib/hooks/brief";
@@ -30,9 +31,24 @@ interface DiffTabProps {
   /** Smart-Diff severity badge click → deep-link to the Findings tab (threaded
    *  from page.tsx's `handleOpenFinding`, docs/plans/smart-diff.md §5). */
   onOpenFinding: (findingId: string) => void;
+  /** File path to scroll into view (in-app "Files changed" deep-link from a
+   *  review-focus item, threaded from page.tsx's `handleOpenFile`). */
+  targetFile?: string | null;
+  /** Bumped by page.tsx on every review-focus click, even re-clicks of the
+   *  SAME file, so the scroll re-triggers even though `targetFile` itself
+   *  didn't change (mirrors the Findings tab's `findingNonce` pattern). */
+  fileNonce?: number;
 }
 
-export function DiffTab({ prId, filesCount, files, canComment, onOpenFinding }: DiffTabProps) {
+export function DiffTab({
+  prId,
+  filesCount,
+  files,
+  canComment,
+  onOpenFinding,
+  targetFile,
+  fileNonce,
+}: DiffTabProps) {
   const t = useTranslations("prReview");
   const { data: comments } = usePrComments(prId);
   const create = useCreatePrComment(prId);
@@ -41,6 +57,21 @@ export function DiffTab({ prId, filesCount, files, canComment, onOpenFinding }: 
   // Smart order is the default (docs/plans/smart-diff.md §5); Original order
   // keeps the existing DiffViewer + inline commenting untouched.
   const [order, setOrder] = React.useState<DiffOrder>("smart");
+
+  // A review-focus deep-link only has an anchored `FileCard` on the Original
+  // path (Smart order groups files into `SmartDiffFileCard`, which carries no
+  // anchor id) — force Original order so the target actually exists in the
+  // DOM before scrolling to it.
+  React.useEffect(() => {
+    if (!targetFile) return;
+    setOrder("original");
+  }, [targetFile, fileNonce]);
+
+  React.useEffect(() => {
+    if (!targetFile || order !== "original") return;
+    const el = document.getElementById(diffFileAnchorId(targetFile));
+    el?.scrollIntoView({ block: "start" });
+  }, [targetFile, fileNonce, order]);
 
   const { data: smartDiff, isLoading: smartDiffLoading } = useSmartDiff(prId);
   const { data: reviews } = usePrReviews(prId);

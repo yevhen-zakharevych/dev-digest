@@ -1,0 +1,47 @@
+{
+  "crumb": "Project Context",
+  "title": "Project Context",
+  "errorTitle": "Couldn't load project context",
+  "errorBody": "Something went wrong discovering documents in this repo's clone.",
+  "cloneUnavailable": {
+    "title": "Clone not available",
+    "body": "This repo hasn't been cloned yet, so no documents can be discovered here. Re-analyze the repo to fetch a clone, then come back."
+  },
+  "empty": {
+    "title": "No documents found",
+    "body": "No specs, docs, or insights markdown files were found in this repo's clone."
+  },
+  "bucket": {
+    "specs": "Specs",
+    "docs": "Docs",
+    "insights": "Insights"
+  },
+  "list": {
+    "searchPlaceholder": "Filter by name or path…",
+    "searchLabel": "Filter documents",
+    "noMatches": "No documents match your search."
+  },
+  "detail": {
+    "selectPrompt": "Select a document to preview or edit it.",
+    "usedByAgents": "Used by {count, plural, =0 {0 agents} one {# agent} other {# agents}}"
+  },
+  "modeToggleLabel": "Document view mode",
+  "mode": {
+    "preview": "Preview",
+    "edit": "Edit"
+  },
+  "editWarning": "Editing writes directly to the repo's working tree. Re-analyzing this repo discards uncommitted edits like this one.",
+  "save": "Save",
+  "saving": "Saving…",
+  "saveError": "Couldn't save this document: {message}",
+  "genericSaveError": "Something went wrong saving this document.",
+  "docEmpty": "This document is empty.",
+  "loadingDoc": "Loading document…",
+  "footer": {
+    "summary": "{count} documents · ≈ {tokens} tokens total · refreshed {relative}",
+    "justNow": "just now",
+    "minutesAgo": "{minutes}m ago",
+    "hoursAgo": "{hours}h ago",
+    "daysAgo": "{days}d ago"
+  }
+}

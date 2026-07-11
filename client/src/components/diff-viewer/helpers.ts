@@ -1,6 +1,13 @@
 /** Pure helpers for the DiffViewer. */
 import { HUNK_HEADER_RE } from "./constants";
 
+/** Stable per-file DOM anchor id (slugified path) — used to scroll a
+ * specific `FileCard` into view from outside the diff viewer, e.g. a
+ * review-focus file click on the Overview tab (`DiffTab.tsx`). */
+export function diffFileAnchorId(path: string): string {
+  return `diff-file-${path.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+}
+
 export interface Line {
   kind: "add" | "del" | "ctx" | "hunk";
   text: string;

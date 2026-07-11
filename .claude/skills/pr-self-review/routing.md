@@ -19,6 +19,7 @@ A single file can match multiple rows — all matching skills apply.
 | `server/src/db/schema.ts` | C – Database | drizzle-orm-patterns, postgresql-table-design |
 | `server/src/db/migrations/**` | C – Database | drizzle-orm-patterns, postgresql-table-design |
 | `server/src/vendor/shared/**` | D – Contracts | zod, typescript-expert |
+| `client/src/vendor/shared/**` | D – Contracts | zod, typescript-expert |
 | `**/*.ts` (not already matched above) | D – Contracts | typescript-expert |
 | `**/*.tsx` (not already matched above) | D – Contracts | typescript-expert |
 | all changed files | E – Security | security |

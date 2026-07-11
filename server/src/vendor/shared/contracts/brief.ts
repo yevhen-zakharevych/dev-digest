@@ -122,3 +122,82 @@ export const PrBrief = z.object({
   history: PrHistory,
 });
 export type PrBrief = z.infer<typeof PrBrief>;
+
+// ============================================================ Why+Risk Brief OUTPUT
+// Net-new, separate output contract for the Why+Risk Brief feature
+// (SPEC-2026-07-10-why-risk-brief). Distinct from the input-bundle `PrBrief`
+// above, which is left untouched. Reuses the `RiskSeverity` vocabulary.
+
+/** A grounded "read this first" pointer: a real file + line + a plain reason. */
+export const ReviewFocusItem = z.object({
+  file: z.string(),
+  line: z.number().int(),
+  reason: z.string(),
+});
+export type ReviewFocusItem = z.infer<typeof ReviewFocusItem>;
+
+/** A line-bearing file reference on a brief risk (distinct from input `Risk.file_refs`). */
+export const BriefRiskRef = z.object({
+  file: z.string(),
+  line: z.number().int().nullish(),
+});
+export type BriefRiskRef = z.infer<typeof BriefRiskRef>;
+
+/** A single grounded reference: a file (+optional line) or a bare endpoint string. */
+export const BriefRiskReference = z.union([BriefRiskRef, z.string()]);
+export type BriefRiskReference = z.infer<typeof BriefRiskReference>;
+
+export const BriefRisk = z.object({
+  title: z.string(),
+  explanation: z.string(),
+  severity: RiskSeverity,
+  references: z.array(BriefRiskReference),
+});
+export type BriefRisk = z.infer<typeof BriefRisk>;
+
+/** The model-produced brief body persisted as `pr_brief.json`. */
+export const RiskBrief = z.object({
+  what: z.string(),
+  why: z.string(),
+  risk_level: RiskSeverity,
+  risks: z.array(BriefRisk),
+  review_focus: z.array(ReviewFocusItem),
+});
+export type RiskBrief = z.infer<typeof RiskBrief>;
+
+/** Closed set of reasons a generation degraded (mapped to i18n on the client). */
+export const BriefDegradedReason = z.enum(['model_failed', 'no_inputs']);
+export type BriefDegradedReason = z.infer<typeof BriefDegradedReason>;
+
+export const BriefStatus = z.enum(['fresh', 'stale', 'not_generated', 'degraded']);
+export type BriefStatus = z.infer<typeof BriefStatus>;
+
+/** The brief generation call's OWN cost/tokens (not the review run's). */
+export const BriefCost = z.object({
+  usd: z.number(),
+  tokens_in: z.number().int(),
+  tokens_out: z.number().int(),
+  model: z.string(),
+});
+export type BriefCost = z.infer<typeof BriefCost>;
+
+/**
+ * GET /pulls/:id/brief return — a non-null wrapper discriminated by `status`.
+ * `brief`/`head_sha`/`generated_at`/`cost` are present for fresh/stale (and the
+ * prior brief on degraded), absent for `not_generated`.
+ */
+export const BriefResponse = z.object({
+  status: BriefStatus,
+  brief: RiskBrief.nullish(),
+  degraded_reason: BriefDegradedReason.nullish(),
+  head_sha: z.string().nullish(),
+  generated_at: z.string().nullish(),
+  cost: BriefCost.nullish(),
+});
+export type BriefResponse = z.infer<typeof BriefResponse>;
+
+/** POST /pulls/:id/brief body — `force: true` is Regenerate. */
+export const GenerateBriefRequest = z.object({
+  force: z.boolean().nullish(),
+});
+export type GenerateBriefRequest = z.infer<typeof GenerateBriefRequest>;

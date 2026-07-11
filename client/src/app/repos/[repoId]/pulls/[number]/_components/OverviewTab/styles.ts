@@ -11,6 +11,15 @@ export const s = {
     gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))",
     gap: 20,
   } satisfies CSSProperties,
+  /** Stacks IntentCard + RiskAreasCard so Risk Areas reads as a continuation
+   *  of the Intent panel while staying a separate component/data source
+   *  (`RiskAreasCard/RiskAreasCard.tsx`'s header comment). */
+  intentColumn: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 14,
+    minWidth: 0,
+  } satisfies CSSProperties,
   descriptionBox: {
     border: "1px solid var(--border)",
     borderRadius: 8,

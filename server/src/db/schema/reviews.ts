@@ -59,4 +59,12 @@ export const prBrief = pgTable('pr_brief', {
     .primaryKey()
     .references(() => pullRequests.id, { onDelete: 'cascade' }),
   json: jsonb('json').notNull(),
+  /** PR head SHA this brief was generated against — drives fresh/stale (AC-13/14). */
+  headSha: text('head_sha'),
+  /** Resolved model id + cost/token accounting for the single brief call (AC-6). */
+  model: text('model'),
+  costUsd: doublePrecision('cost_usd'),
+  tokensIn: integer('tokens_in'),
+  tokensOut: integer('tokens_out'),
+  generatedAt: timestamp('generated_at', { withTimezone: true }).defaultNow().notNull(),
 });

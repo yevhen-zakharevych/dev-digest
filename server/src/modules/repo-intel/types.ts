@@ -121,6 +121,17 @@ export interface FileRankRow {
   percentile: number;
 }
 
+/**
+ * Per-file graph degree — `fanIn` = files that import this file, `fanOut` =
+ * files this file imports. Onboarding's first-task complexity badge reads the
+ * total (importer/caller count) as its fan-out signal.
+ */
+export interface FanCountRow {
+  path: string;
+  fanIn: number;
+  fanOut: number;
+}
+
 export interface RepoMapResult {
   text: string;
   tokens: number;
@@ -169,4 +180,16 @@ export interface RepoIntel {
     opts?: { exclude?: string[] },
   ): Promise<string[]>;
   getCriticalPaths(repoId: string): Promise<string[][]>;
+
+  // --- Onboarding analyzer facts (graph-derived) --------------------------
+  /**
+   * Every indexed file path (one `file_rank` row per file). Honors the degraded
+   * contract: `[]` when the flag is off / no index exists, never throws.
+   */
+  getIndexedFiles(repoId: string): Promise<string[]>;
+  /**
+   * Per-file fan-in/fan-out counts from the import graph (`file_edges`). Honors
+   * the degraded contract: `[]` when degraded, never throws.
+   */
+  getFanCounts(repoId: string): Promise<FanCountRow[]>;
 }

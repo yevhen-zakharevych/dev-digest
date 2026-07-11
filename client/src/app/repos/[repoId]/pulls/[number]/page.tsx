@@ -84,6 +84,17 @@ export default function PRDetailPage() {
     setFindingNonce((n) => n + 1);
   };
 
+  // Review-focus file click (PrBriefCard, Overview tab) → in-app deep-link to
+  // the "Files changed" tab, scrolled to that file. Same in-memory nonce
+  // pattern as `handleOpenFinding` above, so re-clicking the SAME file still
+  // re-triggers the scroll.
+  const targetFile = search.get("file");
+  const [fileNonce, setFileNonce] = React.useState(0);
+  const handleOpenFile = (file: string) => {
+    setParams({ tab: "diff", file });
+    setFileNonce((n) => n + 1);
+  };
+
   // Reviews come newest-first; each is its own run (grouped into accordions).
   const runs = reviews ?? [];
   const allFindings: FindingRecord[] = React.useMemo(
@@ -158,6 +169,7 @@ export default function PRDetailPage() {
             repoId={repoId}
             repoFullName={repoFullName}
             sha={pr.head_sha}
+            onOpenFile={handleOpenFile}
           />
         )}
 
@@ -198,6 +210,8 @@ export default function PRDetailPage() {
             files={pr.files}
             canComment={pr.status === "open"}
             onOpenFinding={handleOpenFinding}
+            targetFile={targetFile}
+            fileNonce={fileNonce}
           />
         )}
       </div>

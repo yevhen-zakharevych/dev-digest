@@ -80,6 +80,21 @@ export function useDeleteAgent() {
   });
 }
 
+/** Persist an agent's ordered project-context document paths (attach/detach/
+ *  reorder). Mutable config — does NOT bump the agent's version. Mirrors
+ *  `useSetSkillAttachedDocs` in `./skills.ts`. */
+export function useSetAgentAttachedDocs() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ agentId, paths }: { agentId: string; paths: string[] }) =>
+      api.put<Agent>(`/agents/${agentId}/docs`, { paths }),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["agents"] });
+      qc.setQueryData(["agent", data.id], data);
+    },
+  });
+}
+
 export function useLinkSkillToAgent() {
   const qc = useQueryClient();
   return useMutation({

@@ -1,48 +1,47 @@
 # Security Code Examples — Unsafe vs Safe Patterns
 
-Each section shows a vulnerable pattern and its secure replacement, tailored to the Quick Blog stack (React 19, Express 5, MongoDB/Mongoose 8, JWT).
+Each section shows a vulnerable pattern and its secure replacement, tailored to DevDigest's
+actual stack (Fastify 5, Drizzle ORM + Postgres 16, Next.js 15/React 19, Zod). No Express,
+MongoDB, or JWT examples — this repo doesn't run any of those.
 
 ---
 
-## 1. MongoDB NoSQL Injection
+## 1. Drizzle / Postgres SQL Injection
 
-### UNSAFE — Operator injection via JSON body
+### UNSAFE — `sql.raw()` with unvalidated input
 
-```javascript
-// POST /api/admin/login  body: { email: "admin@blog.com", password: { "$gt": "" } }
-// The $gt operator makes the query match ANY password
-
-export const adminLogin = async (req, res) => {
-  const { email, password } = req.body
-  const user = await User.findOne({ email, password }) // password could be an operator object!
-  if (!user) return res.status(401).json({ error: 'Invalid credentials' })
-  const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET)
-  res.json({ token })
+```typescript
+// GET /api/findings?sort=title — attacker sends: sort=title; DROP TABLE findings;--
+export async function listFindings(sortColumn: string) {
+  return db.execute(sql.raw(`SELECT * FROM findings ORDER BY ${sortColumn}`)) // sql.raw does NOT escape
 }
 ```
 
-### SAFE — Type casting + bcrypt comparison
+### SAFE — value interpolation, or an allowlist for identifiers
 
-```javascript
-export const adminLogin = async (req, res) => {
-  const email = String(req.body.email)    // Force string type
-  const password = String(req.body.password) // Force string type — neutralizes operators
+```typescript
+// Values: sql`` auto-parameterizes anything interpolated with ${}
+export async function findingsForRepo(repoId: string) {
+  return db.execute(sql`SELECT * FROM findings WHERE repo_id = ${repoId}`) // bound as $1, safe
+}
 
-  const user = await User.findOne({ email, isActive: true })
-  if (!user || !(await user.comparePassword(password))) {
-    return res.status(401).json({ error: 'Invalid credentials' }) // Same message for both
-  }
+// Dynamic identifiers (column/alias names) are NOT auto-safe — validate against an allowlist
+const SORTABLE_COLUMNS = new Set(['title', 'severity', 'created_at'])
+export async function listFindings(sortColumn: string) {
+  if (!SORTABLE_COLUMNS.has(sortColumn)) throw new BadRequestError('Invalid sort column')
+  return db.select().from(t.findings).orderBy(sql.identifier(sortColumn))
+}
 
-  const token = jwt.sign(
-    { userId: user._id, email: user.email, name: user.name, role: user.role },
-    process.env.JWT_SECRET,
-    { expiresIn: '7d', algorithm: 'HS256' }
-  )
-  res.json({ success: true, token, user: user.toJSON() })
+// Best default — the query builder parameterizes automatically, prefer it over sql``
+export async function findingsForRepo(repoId: string) {
+  return db.select().from(t.findings).where(eq(t.findings.repoId, repoId))
 }
 ```
 
-**Why it works:** `String({ "$gt": "" })` becomes `"[object Object]"` — a harmless string that won't match any password hash. The real defense is bcrypt comparison, which never puts the password in a query.
+**Why it works:** `sql\`...\`` binds interpolated *values* as query parameters ($1, $2, …) —
+safe by construction. `sql.raw()` and `sql.identifier()` do not parameterize; they're for
+dynamic SQL text/identifiers and must only ever receive validated, allowlisted input. This repo
+currently has zero `sql.raw()`/`sql.identifier()` call sites in `server/src` — keep it that way.
 
 ---
 
@@ -50,70 +49,71 @@ export const adminLogin = async (req, res) => {
 
 ### UNSAFE — Rendering unsanitized HTML content
 
-```jsx
-// Blog post content from database (could contain stored XSS)
-function BlogPost({ blog }) {
+```tsx
+// Finding rationale or PR description surfaced in the studio UI
+function FindingCard({ finding }: { finding: Finding }) {
   return (
-    <article>
-      <h1>{blog.title}</h1>
-      {/* VULNERABLE — content could be: <img src=x onerror=alert(document.cookie)> */}
-      <div dangerouslySetInnerHTML={{ __html: blog.content }} />
-    </article>
+    <div>
+      <h3>{finding.title}</h3>
+      {/* VULNERABLE if rationale ever contains PR-author-controlled markup */}
+      <div dangerouslySetInnerHTML={{ __html: finding.rationale }} />
+    </div>
   )
 }
 ```
 
-### SAFE — DOMPurify sanitization
+### SAFE — DOMPurify sanitization, or just let JSX escape it
 
-```jsx
+```tsx
 import DOMPurify from 'dompurify'
 
-function BlogPost({ blog }) {
-  // Sanitize once, memoize for performance
-  const sanitizedContent = useMemo(
-    () => DOMPurify.sanitize(blog.content, {
-      ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'ul', 'ol', 'li', 'a', 'h2', 'h3', 'blockquote', 'code', 'pre'],
-      ALLOWED_ATTR: ['href', 'target', 'rel'],
-      ALLOW_DATA_ATTR: false
+function FindingCard({ finding }: { finding: Finding }) {
+  const safeRationale = useMemo(
+    () => DOMPurify.sanitize(finding.rationale, {
+      ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'code', 'pre'],
+      ALLOWED_ATTR: [],
     }),
-    [blog.content]
+    [finding.rationale],
   )
 
   return (
-    <article>
-      <h1>{blog.title}</h1> {/* React auto-escapes this — safe */}
-      <div dangerouslySetInnerHTML={{ __html: sanitizedContent }} />
-    </article>
+    <div>
+      <h3>{finding.title}</h3> {/* React auto-escapes this — safe by default */}
+      <div dangerouslySetInnerHTML={{ __html: safeRationale }} />
+    </div>
   )
 }
 ```
 
-**Why it works:** DOMPurify strips all script tags, event handlers, and dangerous attributes. The allowlist approach only permits known-safe HTML elements.
+**Why it works:** DOMPurify strips script tags, event handlers, and dangerous attributes; the
+allowlist only permits known-safe elements. Compare with the repo's one actual
+`dangerouslySetInnerHTML` usage (`client/src/app/layout.tsx:21`) — it injects a hardcoded
+theme-no-flash script constant, never user/DB content. That's the safe end of this spectrum:
+prefer a constant over sanitized user content whenever possible.
 
 ---
 
 ## 3. URL-Based XSS
 
-### UNSAFE — Rendering user-provided URLs without validation
+### UNSAFE — Rendering a user/PR-provided URL without validation
 
-```jsx
-// Comment with a link — user could submit: javascript:alert(document.cookie)
-function CommentLink({ url, text }) {
+```tsx
+// Rendering a link from a PR description or repo README
+function ExternalLink({ url, text }: { url: string; text: string }) {
   return <a href={url}>{text}</a>
 }
 ```
 
 ### SAFE — Protocol validation
 
-```jsx
-function CommentLink({ url, text }) {
+```tsx
+function ExternalLink({ url, text }: { url: string; text: string }) {
   const safeUrl = useMemo(() => {
     try {
       const parsed = new URL(url)
-      // Only allow http and https protocols
       return ['http:', 'https:'].includes(parsed.protocol) ? url : '#'
     } catch {
-      return '#' // Invalid URL
+      return '#'
     }
   }, [url])
 
@@ -125,599 +125,388 @@ function CommentLink({ url, text }) {
 }
 ```
 
-**Why it works:** `new URL('javascript:alert(1)')` parses successfully with `protocol: 'javascript:'`, which the allowlist rejects. `rel="noopener noreferrer"` prevents the opened page from accessing `window.opener`.
+**Why it works:** `new URL('javascript:alert(1)')` parses successfully with
+`protocol: 'javascript:'`, which the allowlist rejects. `rel="noopener noreferrer"` stops the
+opened page from reaching back via `window.opener`.
 
 ---
 
-## 4. JWT Implementation
+## 4. Secrets Management
 
-### UNSAFE — Weak secret, no expiry, no algorithm pinning
+### UNSAFE — Reading `process.env` directly in a service
 
-```javascript
-// Secret is short, predictable, and hardcoded
-const token = jwt.sign({ userId: user._id }, 'secret123')
-
-// Verification doesn't check algorithm — vulnerable to "none" algorithm attack
-const decoded = jwt.decode(token) // decode() does NOT verify! Just parses base64
-```
-
-### SAFE — Strong secret, explicit settings
-
-```javascript
-// Signing
-const token = jwt.sign(
-  { userId: user._id, email: user.email, name: user.name, role: user.role },
-  process.env.JWT_SECRET, // 256+ bit secret from environment
-  {
-    expiresIn: '7d',
-    algorithm: 'HS256' // Pin algorithm to prevent confusion attacks
+```typescript
+// Anywhere outside adapters/secrets/local.ts
+export class ReviewService {
+  async run() {
+    const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) // bypasses the chokepoint
   }
-)
-
-// Verification — jwt.verify() checks signature AND expiration
-try {
-  const decoded = jwt.verify(token, process.env.JWT_SECRET)
-  req.user = decoded
-  next()
-} catch (err) {
-  if (err.name === 'TokenExpiredError') {
-    return res.status(401).json({ error: 'Token expired' })
-  }
-  return res.status(401).json({ error: 'Invalid token' })
 }
 ```
 
-**Why it works:** `jwt.verify()` cryptographically validates the signature (unlike `jwt.decode()` which just parses). Pinning `algorithm: 'HS256'` prevents the "none" algorithm attack where an attacker forges tokens with no signature.
+### SAFE — Every consumer goes through `SecretsProvider`
+
+```typescript
+// server/src/adapters/secrets/local.ts — the ONLY place process.env is read for a secret
+export class LocalSecretsProvider implements SecretsProvider {
+  async get(key: SecretKey): Promise<string | undefined> {
+    const stored = (await this.load())[key as string]   // UI-entered override wins
+    if (stored) return stored
+    return this.env[key as string]                        // fallback: env var
+  }
+}
+
+// Every consumer — injected via the DI container, never `new OpenAI()` inline
+export class ReviewService {
+  constructor(private readonly secrets: SecretsProvider) {}
+  async run() {
+    const apiKey = await this.secrets.get('OPENAI_API_KEY')
+    const client = new OpenAI({ apiKey })
+  }
+}
+```
+
+**Why it works:** A single chokepoint means one place to audit, rotate, or swap for a real
+vault later — every call site is a `container.secrets.get(key)`, never a scattered
+`process.env.X`. Adding a new secret means wiring a new key through `SecretsProvider`, not
+adding a new `process.env` read somewhere in a service.
 
 ---
 
 ## 5. File Upload Validation
 
-### UNSAFE — No validation, user-controlled filename
+### UNSAFE — No allowlist, extracting an archive straight to disk
 
-```javascript
-const storage = multer.diskStorage({
-  destination: 'uploads/',
-  filename: (req, file, cb) => {
-    cb(null, file.originalname) // User controls filename: "../../etc/passwd"
-  }
-})
-
-const upload = multer({ storage }) // No file filter, no size limit
-```
-
-### SAFE — Full validation pipeline
-
-```javascript
-import multer from 'multer'
-import path from 'path'
-import crypto from 'crypto'
-import fs from 'fs'
-
-const uploadDir = 'uploads/blogs'
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true })
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadDir),
-  filename: (req, file, cb) => {
-    // Server-generated name — unpredictable, no traversal possible
-    const uniqueName = `blog-${Date.now()}-${crypto.randomInt(100000000, 999999999)}`
-    const ext = path.extname(file.originalname).toLowerCase()
-    cb(null, `${uniqueName}${ext}`)
-  }
-})
-
-const fileFilter = (req, file, cb) => {
-  const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp']
-  if (allowedTypes.includes(file.mimetype)) {
-    cb(null, true)
-  } else {
-    cb(new Error('Invalid file type. Only JPEG, PNG, GIF, and WebP are allowed.'), false)
-  }
+```typescript
+// Hypothetical unsafe zip-import — do NOT copy this shape
+async function importZip(buffer: Buffer) {
+  const zip = new AdmZip(buffer)
+  zip.extractAllTo('uploads/skills', true) // attacker-controlled entry names → zip-slip
 }
-
-export const upload = multer({
-  storage,
-  fileFilter,
-  limits: {
-    fileSize: 5 * 1024 * 1024, // 5MB max
-    files: 1                    // Single file only
-  }
-})
 ```
 
-**Why it works:** Server-generated filenames eliminate path traversal. MIME type allowlisting blocks executables. Size limits prevent storage abuse. The `files: 1` limit prevents multipart abuse.
+### SAFE — Extension allowlist + read into memory, never write to disk
+
+```typescript
+// server/src/modules/skills/routes.ts — the actual multipart route
+app.post('/skills/import', async (req) => {
+  await getContext(app.container, req)
+  const data = await req.file()
+  if (!data) throw new BadRequestError('No file uploaded')
+  const buf = await data.toBuffer()
+  const lower = (data.filename ?? 'skill.md').toLowerCase()
+  if (lower.endsWith('.zip')) return service.previewZip(buf)
+  if (lower.endsWith('.md') || lower.endsWith('.markdown')) {
+    return service.previewMarkdown(data.filename!, buf.toString('utf8'))
+  }
+  throw new BadRequestError('Only .md, .markdown or .zip files are supported')
+})
+
+// server/src/modules/skills/service.ts — reads ONE entry into memory, never extracts to disk
+async previewZip(buffer: Buffer): Promise<ImportPreview> {
+  const zip = new AdmZip(buffer)
+  const skipped: string[] = []
+  let chosen: { name: string; content: string } | undefined
+  for (const e of zip.getEntries()) {
+    if (e.isDirectory) continue
+    const base = e.entryName.split('/').pop()!.toLowerCase()
+    if (base === 'skill.md' && !chosen) {
+      chosen = { name: e.entryName, content: e.getData().toString('utf8') }
+      continue
+    }
+    skipped.push(e.entryName) // recorded, but bytes NEVER extracted
+  }
+  // ...
+}
+```
+
+Global size/count cap set at plugin registration, not per-route:
+
+```typescript
+// server/src/app.ts
+await app.register(multipart, { limits: { fileSize: 2 * 1024 * 1024, files: 1 } })
+```
+
+**Why it works:** Reading a single named zip entry into memory and never calling an
+`extractAllTo`-style disk write eliminates zip-slip by construction — there is no
+attacker-controlled path to sanitize, because nothing is ever written to disk from this route.
+The extension allowlist rejects anything but `.md`/`.markdown`/`.zip` before any parsing
+happens.
 
 ---
 
-## 6. Auth Middleware — Missing Checks
+## 6. Broken Object Level Authorization (BOLA)
 
-### UNSAFE — Incomplete auth with fail-open
+### UNSAFE — Resolving a resource by id param with no workspace scope
 
-```javascript
-export const auth = (req, res, next) => {
-  const token = req.headers.authorization
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET)
-    req.user = decoded
-  } catch (err) {
-    console.log('Auth error') // Logs but doesn't return!
-  }
-  next() // ALWAYS calls next — even when auth fails!
-}
+```typescript
+app.get('/skills/:id', { schema: { params: IdParams } }, async (req) => {
+  const skill = await service.getById(req.params.id) // any workspace's skill, by guessing an id
+  if (!skill) throw new NotFoundError('Skill not found')
+  return skill
+})
 ```
 
-### SAFE — Fail-closed with specific error messages
+### SAFE — Every route resolves tenancy, every query scopes by it
 
-```javascript
-export const auth = (req, res, next) => {
-  const authHeader = req.headers.authorization
-  if (!authHeader) {
-    return res.status(401).json({ success: false, message: 'No token provided' })
-  }
-
-  const token = authHeader.startsWith('Bearer ')
-    ? authHeader.split(' ')[1]
-    : authHeader
-
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET)
-    req.user = decoded
-    next() // Only reaches here if verification succeeds
-  } catch (err) {
-    if (err.name === 'TokenExpiredError') {
-      return res.status(401).json({ success: false, message: 'Token expired' })
-    }
-    return res.status(401).json({ success: false, message: 'Invalid token' })
-  }
+```typescript
+// server/src/modules/_shared/context.ts
+export async function getContext(container: Container, req: FastifyRequest) {
+  const [user, workspace] = await Promise.all([
+    container.auth.currentUser(req),
+    container.auth.currentWorkspace(req),
+  ])
+  return { workspaceId: workspace.id, userId: user.id }
 }
+
+// server/src/modules/skills/routes.ts
+app.get('/skills/:id', { schema: { params: IdParams } }, async (req) => {
+  const { workspaceId } = await getContext(app.container, req)
+  const skill = await service.get(workspaceId, req.params.id) // service filters WHERE workspace_id = ...
+  if (!skill) throw new NotFoundError('Skill not found') // 404 for "not mine" too — don't leak existence
+  return skill
+})
 ```
 
-**Why it works:** The `return` before each error response ensures `next()` is only called on successful verification. This is the fail-closed pattern — errors deny access rather than granting it.
+**Why it works:** `getContext()` is called on every route, and the service layer's query
+includes `workspaceId` in its WHERE clause — an id from another workspace simply doesn't match
+any row, so it 404s the same way a nonexistent id would. This is OWASP API Security Top 10 #1
+(BOLA), the highest-frequency real API vulnerability class.
 
 ---
 
 ## 7. Error Handling — Stack Trace Leak
 
-### UNSAFE — Exposing internals to client
+### UNSAFE — Exposing internals to the client
 
-```javascript
-app.use((err, req, res, next) => {
-  res.status(500).json({
-    error: err.message,     // Could reveal: "Cannot read property of undefined at /app/server/src/..."
-    stack: err.stack,       // Full file paths, line numbers, dependency versions
-    query: req.query,       // Could echo back malicious input
-    env: process.env.NODE_ENV // Confirms environment to attacker
+```typescript
+app.setErrorHandler((err, req, reply) => {
+  reply.status(500).send({
+    error: (err as Error).message,
+    stack: (err as Error).stack,       // full file paths, line numbers, dependency versions
+    query: req.query,                   // could echo back malicious input
   })
 })
 ```
 
-### SAFE — Generic client response, detailed internal logging
+### SAFE — Generic envelope to the client, full detail to the logger
 
-```javascript
-app.use((err, req, res, next) => {
-  // Log full details internally
-  logger.error({
-    event: 'unhandled_error',
-    error: err.message,
-    stack: err.stack,
-    method: req.method,
-    url: req.url,
-    ip: req.ip,
-    userId: req.user?.userId
-  })
-
-  // Send minimal info to client
-  const statusCode = err.statusCode || 500
-  res.status(statusCode).json({
-    success: false,
-    message: statusCode === 500 ? 'Internal Server Error' : err.message,
-    ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
-  })
+```typescript
+// server/src/app.ts — the actual handler, registered BEFORE feature modules
+app.setErrorHandler((err: unknown, _req, reply) => {
+  if (hasZodFastifySchemaValidationErrors(err)) {
+    reply.status(422).send({
+      error: { code: 'validation_error', message: 'Request validation failed', details: err.validation },
+    })
+    return
+  }
+  if (isResponseSerializationError(err)) {
+    app.log.error({ err }, 'response serialization failed') // never leak the raw object
+    reply.status(500).send({ error: { code: 'internal_error', message: 'Internal error' } })
+    return
+  }
+  if (err instanceof AppError) {
+    reply.status(err.statusCode).send({ error: { code: err.code, message: err.message, details: err.details } })
+    return
+  }
+  app.log.error(err) // full detail, server-side only
+  const e = err as { statusCode?: number; message?: string }
+  reply.status(e.statusCode ?? 500).send({ error: { code: 'internal_error', message: e.message ?? 'Internal error' } })
 })
 ```
 
-**Why it works:** Production clients see a generic message. Stack traces are only included in development mode. Full error details are logged server-side for debugging.
+**Why it works:** Every branch sends the structured `{ error: { code, message, details } }`
+envelope to the client and full detail only to `app.log` — there is no code path that echoes a
+raw stack trace or object into the HTTP response, in any environment.
 
 ---
 
-## 8. Access Control — IDOR
-
-### UNSAFE — No ownership check
-
-```javascript
-// DELETE /api/blog/delete/123 — any authenticated user can delete any blog
-export const deleteBlog = asyncHandler(async (req, res) => {
-  const blog = await Blog.findByIdAndDelete(req.params.id)
-  if (!blog) return res.status(404).json({ error: 'Blog not found' })
-  res.json({ success: true, message: 'Blog deleted' })
-})
-```
-
-### SAFE — Verify ownership or admin role
-
-```javascript
-export const deleteBlog = asyncHandler(async (req, res) => {
-  const blog = await Blog.findById(req.params.id)
-  if (!blog) {
-    return res.status(404).json({ success: false, message: 'Blog not found' })
-  }
-
-  // Authorization: only the author or an admin can delete
-  const isOwner = blog.author.toString() === req.user.userId
-  const isAdmin = req.user.role === 'admin'
-  if (!isOwner && !isAdmin) {
-    return res.status(403).json({ success: false, message: 'Not authorized' })
-  }
-
-  // Clean up uploaded image
-  if (blog.image) {
-    const filename = path.basename(blog.image)
-    const filePath = path.resolve('uploads/blogs', filename)
-    if (filePath.startsWith(path.resolve('uploads/blogs'))) {
-      fs.unlink(filePath, (err) => {
-        if (err) logger.error({ event: 'file_delete_failed', filename, error: err.message })
-      })
-    }
-  }
-
-  await blog.deleteOne()
-  res.json({ success: true, message: 'Blog deleted' })
-})
-```
-
-**Why it works:** Separating the find and delete operations allows an ownership check in between. The `.toString()` on ObjectId ensures proper comparison. Admin role provides an escape hatch for moderation.
-
----
-
-## 9. Password Storage
-
-### UNSAFE — Reversible or weak hashing
-
-```javascript
-// MD5 — broken, rainbow tables exist for all common passwords
-import crypto from 'crypto'
-const hash = crypto.createHash('md5').update(password).digest('hex')
-
-// SHA-256 — fast hash, not designed for passwords (billions per second on GPU)
-const hash = crypto.createHash('sha256').update(password).digest('hex')
-
-// Plain text — the worst option
-user.password = req.body.password
-```
-
-### SAFE — bcrypt with pre-save hook
-
-```javascript
-import bcrypt from 'bcryptjs'
-
-userSchema.pre('save', async function(next) {
-  if (!this.isModified('password')) return next()
-  const salt = await bcrypt.genSalt(10)
-  this.password = await bcrypt.hash(this.password, salt)
-  next()
-})
-
-userSchema.methods.comparePassword = async function(candidatePassword) {
-  return bcrypt.compare(candidatePassword, this.password)
-}
-
-// CRITICAL — never return password in API responses
-userSchema.methods.toJSON = function() {
-  const obj = this.toObject()
-  delete obj.password
-  return obj
-}
-```
-
-**Why it works:** bcrypt is purposefully slow (~100ms per hash at cost 10), making brute force infeasible. The pre-save hook ensures every password write goes through hashing. `toJSON` strips the hash from all API responses automatically.
-
----
-
-## 10. CORS Configuration
+## 8. CORS Configuration
 
 ### UNSAFE — Wildcard with credentials
 
-```javascript
-// Browsers actually reject this combination, but it shows the wrong mindset
-app.use(cors({
-  origin: '*',
-  credentials: true
-}))
-
-// Even worse — reflect the requester's origin (any site can make credentialed requests)
-app.use(cors({
-  origin: true,
-  credentials: true
-}))
+```typescript
+await app.register(cors, { origin: '*', credentials: true })          // browsers reject this combo, but wrong mindset
+await app.register(cors, { origin: true, credentials: true })          // reflects any origin — even worse
 ```
 
-### SAFE — Explicit allowlist with validation
+### SAFE — Single explicit origin
 
-```javascript
-const allowedOrigins = [
-  process.env.CLIENT_URL,   // Production frontend URL
-  ...(process.env.NODE_ENV === 'development'
-    ? ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175']
-    : [])
-].filter(Boolean)
-
-app.use(cors({
-  origin: (origin, callback) => {
-    // Allow requests with no origin (server-to-server, Postman)
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true)
-    } else {
-      callback(new Error('Not allowed by CORS'))
-    }
-  },
-  credentials: true
-}))
+```typescript
+// server/src/app.ts — the actual config
+await app.register(cors, { origin: [config.webOrigin], credentials: true })
 ```
 
-**Why it works:** Only explicitly listed origins can make credentialed cross-origin requests. Development origins are only included when `NODE_ENV` is `development`. The `filter(Boolean)` removes undefined values if `CLIENT_URL` isn't set.
+**Why it works:** Only the configured `webOrigin` can make credentialed cross-origin requests.
+No reflection, no wildcard — an explicit allowlist of exactly one origin for this single-client
+API.
 
 ---
 
-## 11. Command Injection
+## 9. Command Injection
 
-### UNSAFE — Shell execution with user input
+### UNSAFE — Shell execution with attacker-influenced input
 
-```javascript
+```typescript
 import { exec } from 'child_process'
 
-// Image processing with user-controlled filename
-// Attacker uploads file named: "image.jpg; rm -rf /"
-export const processImage = (req, res) => {
-  exec(`convert uploads/${req.file.originalname} -resize 800x600 output.jpg`, (err) => {
-    if (err) return res.status(500).json({ error: 'Processing failed' })
-    res.json({ success: true })
-  })
+// Attacker-controlled search pattern reaches a shell string
+function search(pattern: string, root: string) {
+  exec(`rg --line-number "${pattern}" ${root}`, (err, stdout) => { /* ... */ }) // pattern could be: "; rm -rf /"
 }
 ```
 
-### SAFE — execFile with argument array
+### SAFE — Array-argument `spawn`/`execFile`, no shell involved
 
-```javascript
-import { execFile } from 'child_process'
+```typescript
+// server/src/adapters/codeindex/ripgrep.ts — the actual pattern in this repo
+import { spawn } from 'node:child_process'
 
-export const processImage = (req, res) => {
-  const inputPath = path.join('uploads/blogs', path.basename(req.file.filename))
-  const outputPath = path.join('uploads/blogs', `thumb-${req.file.filename}`)
-
-  // execFile does NOT spawn a shell — semicolons, pipes, etc. are treated as literal characters
-  execFile('convert', [inputPath, '-resize', '800x600', outputPath], (err) => {
-    if (err) return res.status(500).json({ error: 'Processing failed' })
-    res.json({ success: true })
-  })
+function search(pattern: string, root: string) {
+  const proc = spawn('rg', ['--line-number', '--no-heading', '--color=never', pattern, root])
+  // pattern and root are passed as literal argv entries — never interpreted by a shell
 }
 ```
 
-**Why it works:** `execFile` passes arguments directly to the process without shell interpretation. Characters like `;`, `|`, `&&`, and backticks are treated as literal text, not shell metacharacters.
+**Why it works:** Array-form `spawn`/`execFile` passes each argument directly to the process;
+shell metacharacters (`;`, `|`, `&&`, backticks) inside `pattern` are treated as literal text,
+not shell syntax. This is already the pattern used for the one subprocess call in this repo —
+keep any future one (git, gh CLI) in the same shape.
 
 ---
 
-## 12. Rate Limiting
+## 10. Rate Limiting
 
-### UNSAFE — No rate limiting on sensitive endpoint
+### UNSAFE — No limit on an LLM-calling or upload endpoint
 
-```javascript
-// Login endpoint with no rate limit — attacker can try millions of passwords
-adminRouter.post('/login', adminLogin)
-
-// Comment endpoint with no rate limit — bot can flood with spam
-blogRouter.post('/add-comment', validateComment, addComment)
+```typescript
+app.post('/pulls/:id/review', async (req) => { /* triggers an LLM run, no limit */ })
 ```
 
-### SAFE — Endpoint-specific rate limiters
+### SAFE — Global default + tighter per-route override
 
-```javascript
-import rateLimit from 'express-rate-limit'
-
-export const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5,                    // 5 attempts
-  message: { success: false, message: 'Too many login attempts, try again in 15 minutes' },
-  standardHeaders: true,
-  legacyHeaders: false
-})
-
-export const commentLimiter = rateLimit({
-  windowMs: 60 * 1000,  // 1 minute
-  max: 5,                // 5 comments
-  message: { success: false, message: 'Too many comments, slow down' },
-  standardHeaders: true,
-  legacyHeaders: false
-})
-
-// Applied in routes
-adminRouter.post('/login', loginLimiter, adminLogin)
-blogRouter.post('/add-comment', commentLimiter, validateComment, addComment)
-```
-
-**Why it works:** `express-rate-limit` tracks requests per IP address within a time window. The `standardHeaders: true` option returns `RateLimit-*` headers so clients know their remaining quota. Different endpoints get different limits based on their abuse potential.
-
----
-
-## 13. Input Validation
-
-### UNSAFE — Raw request body used directly
-
-```javascript
-export const addBlog = asyncHandler(async (req, res) => {
-  // No validation — title could be empty, category could be anything
-  const blog = await Blog.create({
-    ...req.body,           // Mass assignment — client could send { role: 'admin', isPublished: true }
-    author: req.user.userId
-  })
-  res.status(201).json({ success: true, blog })
-})
-```
-
-### SAFE — Explicit field extraction with validation middleware
-
-```javascript
-// Validator middleware
-export const validateBlogInput = (req, res, next) => {
-  const errors = []
-  const { title, description, category } = req.body
-
-  if (!title || title.trim().length < 3) {
-    errors.push('Title must be at least 3 characters')
-  }
-  if (!description || description.trim().length < 10) {
-    errors.push('Description must be at least 10 characters')
-  }
-  if (!category) {
-    errors.push('Category is required')
-  }
-  if (!req.file) {
-    errors.push('Blog image is required')
-  }
-
-  if (errors.length > 0) {
-    return res.status(400).json({ success: false, errors })
-  }
-  next()
+```typescript
+// server/src/app.ts — global default
+if (config.nodeEnv !== 'test') {
+  await app.register(rateLimit, { max: 120, timeWindow: '1 minute' })
 }
 
-// Controller — explicit field extraction
-export const addBlog = asyncHandler(async (req, res) => {
-  const { title, description, category } = req.body // Only extract expected fields
+// per-route override on an expensive endpoint
+app.post(
+  '/pulls/:id/review',
+  { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } },
+  async (req) => { /* ... */ },
+)
 
-  const blog = await Blog.create({
-    title: title.trim(),
-    description: description.trim(),
-    category,
-    image: `/uploads/blogs/${req.file.filename}`,
-    author: req.user.userId,
-    authorName: req.user.name
-  })
-  res.status(201).json({ success: true, blog })
-})
+// health checks opt out entirely — not a bypass to copy elsewhere
+app.get('/health', { config: { rateLimit: false } }, async () => ({ status: 'ok' }))
 ```
 
-**Why it works:** The validation middleware rejects invalid input before the controller runs. Explicit field destructuring prevents mass assignment — only the expected fields are passed to `Blog.create()`. Server-side validation catches anything that bypasses client-side checks.
+**Why it works:** `@fastify/rate-limit` applies the 120/min global by default; a route-level
+`config.rateLimit` override tightens (or disables) it per-route. LLM-calling and upload routes
+should always get a tighter override than the global default given their cost.
 
 ---
 
-## 14. Sensitive Data in Logs
+## 11. Input Validation & Mass Assignment Prevention
 
-### UNSAFE — Logging full request bodies
+### UNSAFE — Trusting `req.body` without a schema, or spreading it into an insert
 
-```javascript
-// Logs everything including passwords, tokens, and personal data
-app.use((req, res, next) => {
-  console.log('Request:', {
-    method: req.method,
-    url: req.url,
-    body: req.body, // { email: "user@test.com", password: "MyS3cretP@ss!" }
-    headers: req.headers // { authorization: "Bearer eyJhbGciOi..." }
-  })
-  next()
+```typescript
+app.post('/skills', async (req) => {
+  // No schema — client could send { name, description, workspaceId: 'someone-elses-workspace' }
+  const skill = await db.insert(t.skills).values(req.body as any)
+  return skill
 })
 ```
 
-### SAFE — Redact sensitive fields
+### SAFE — Zod schema as the field allowlist
 
-```javascript
-const SENSITIVE_FIELDS = ['password', 'token', 'secret', 'authorization', 'creditCard', 'ssn']
+```typescript
+// server/src/modules/skills/routes.ts — the actual pattern
+const CreateSkillBody = z.object({
+  name: z.string().min(1),
+  description: z.string(),
+  type: SkillType,
+  body: z.string().min(1),
+  enabled: z.boolean().optional(),
+})
 
-const redactBody = (body) => {
-  if (!body || typeof body !== 'object') return body
-  const redacted = { ...body }
-  for (const field of SENSITIVE_FIELDS) {
-    if (redacted[field]) redacted[field] = '***'
-  }
-  return redacted
-}
-
-const redactHeaders = (headers) => {
-  const redacted = { ...headers }
-  if (redacted.authorization) redacted.authorization = 'Bearer ***'
-  if (redacted.cookie) redacted.cookie = '***'
-  return redacted
-}
-
-app.use((req, res, next) => {
-  logger.info({
-    event: 'http_request',
-    method: req.method,
-    url: req.url,
-    ip: req.ip,
-    body: redactBody(req.body),
-    userAgent: req.headers['user-agent']
-    // Don't log full headers — they contain tokens
-  })
-  next()
+app.post('/skills', { schema: { body: CreateSkillBody } }, async (req, reply) => {
+  const { workspaceId } = await getContext(app.container, req)
+  // req.body is now typed AND validated — only these fields exist, workspaceId comes from context, not the body
+  const skill = await service.create(workspaceId, req.body)
+  reply.status(201)
+  return skill
 })
 ```
 
-**Why it works:** Sensitive fields are replaced with `***` before logging. Authorization headers are masked. The logger only captures what's needed for debugging, not the full request dump.
+**Why it works:** `fastify-type-provider-zod`'s `validatorCompiler` (wired once in
+`server/src/app.ts:65`) rejects any request whose body doesn't match `CreateSkillBody` with a
+422 before the handler even runs — the schema IS the allowlist. `workspaceId` is never taken
+from the client-supplied body; it always comes from `getContext()`.
 
 ---
 
-## 15. Mass Assignment Prevention
+## 12. Sensitive Data in Logs
 
-### UNSAFE — Spreading entire request body
+### UNSAFE — No redaction on the request logger
 
-```javascript
-// User registration — attacker sends: { email, password, role: 'admin', isActive: true }
-export const register = asyncHandler(async (req, res) => {
-  const user = await User.create(req.body) // Accepts ANY field including role!
-  res.status(201).json({ success: true, user })
+```typescript
+// server/src/app.ts — current config, missing redact
+const app = Fastify({
+  logger: { level: config.logLevel }, // no `redact` — a future hook logging req.headers/body would leak secrets
 })
 ```
 
-### SAFE — Explicit field extraction
+### SAFE — Explicit `redact` paths
 
-```javascript
-export const register = asyncHandler(async (req, res) => {
-  const { email, password, name } = req.body // Only expected fields
-
-  const user = await User.create({
-    email,
-    password,
-    name
-    // role defaults to 'author' via schema
-    // isActive defaults to true via schema
-  })
-
-  res.status(201).json({ success: true, user: user.toJSON() })
+```typescript
+const app = Fastify({
+  logger: {
+    level: config.logLevel,
+    redact: ['req.headers.authorization', 'req.headers.cookie'],
+    transport: config.nodeEnv === 'development'
+      ? { target: 'pino-pretty', options: { colorize: true } }
+      : undefined,
+  },
 })
 ```
 
-**Why it works:** By destructuring only the expected fields, any extra fields sent by the client (like `role` or `isActive`) are silently ignored. Schema defaults handle the rest.
+**Why it works:** Pino replaces matched paths with `[REDACTED]` before the log line is emitted
+— cheap (~2% overhead) insurance against a future hook or handler that logs `req.headers`/`body`
+wholesale. Nothing in this repo does that today, which is exactly why this gap is easy to miss
+in review — it's not exploited yet, but it's one added debug log away from leaking a bearer
+token.
 
 ---
 
-## 16. MongoDB Regex Injection (ReDoS)
+## 13. ReDoS via Unescaped Regex
 
-### UNSAFE — User input directly in regex
+### UNSAFE — User input straight into `RegExp`
 
-```javascript
-// Search endpoint — attacker sends: query = "(a+)+"
-export const searchBlogs = asyncHandler(async (req, res) => {
-  const blogs = await Blog.find({
-    title: new RegExp(req.query.q, 'i') // ReDoS: catastrophic backtracking
-  })
-  res.json({ success: true, blogs })
+```typescript
+// Search endpoint — attacker sends: q = "(a+)+"
+app.get('/skills', async (req) => {
+  const pattern = new RegExp(req.query.q as string, 'i') // catastrophic backtracking
+  return db.select().from(t.skills).where(sql`${t.skills.name} ~* ${pattern.source}`)
 })
 ```
 
-### SAFE — Escape special regex characters
+### SAFE — Escape special characters, cap input length
 
-```javascript
-const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+```typescript
+const escapeRegex = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
-export const searchBlogs = asyncHandler(async (req, res) => {
-  const query = String(req.query.q || '').slice(0, 100) // Type cast + length limit
-  const blogs = await Blog.find({
-    title: new RegExp(escapeRegex(query), 'i') // Special chars escaped
-  }).limit(20)
-
-  res.json({ success: true, blogs })
+app.get('/skills', { schema: { querystring: z.object({ q: z.string().max(100).optional() }) } }, async (req) => {
+  const q = req.query.q
+  if (!q) return service.list(workspaceId)
+  const safe = escapeRegex(q)
+  return db.select().from(t.skills).where(ilike(t.skills.name, `%${safe}%`)).limit(20)
 })
 ```
 
-**Why it works:** `escapeRegex` neutralizes all regex metacharacters, preventing an attacker from crafting a pattern that causes catastrophic backtracking. The length limit adds defense in depth. `.limit(20)` prevents memory exhaustion from large result sets.
+**Why it works:** `escapeRegex` neutralizes regex metacharacters before they reach the engine —
+no attacker-controlled pattern can be crafted. The Zod `.max(100)` on the query param and
+`.limit(20)` on the query add defense in depth against length- and volume-based abuse
+independent of the regex concern.

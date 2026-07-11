@@ -46,6 +46,7 @@
     "tabs": {
       "config": "Config",
       "skills": "Skills",
+      "context": "Context",
       "evals": "Evals",
       "stats": "Stats",
       "ci": "CI"
@@ -95,5 +96,34 @@
   },
   "mount": {
     "body": "Mount point for {owner}. The Agent Editor shell + tab routing are wired by A2 — {owner} renders this tab."
+  },
+  "context": {
+    "attachedCount": "{attached} of {total} attached",
+    "untrustedNote": "Injected as an untrusted block (## Project context) into every run.",
+    "tokenEstimate": "≈ {count} tokens in the attached set (includes enabled skills)",
+    "searchPlaceholder": "Search documents by name or path…",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "preview": "Preview",
+    "bucket": {
+      "specs": "specs",
+      "docs": "docs",
+      "insights": "insights"
+    },
+    "tokens": "{count} tokens",
+    "usedByAgents": "Used by {count, plural, =0 {0 agents} one {# agent} other {# agents}}",
+    "noRepo": {
+      "title": "No repo selected",
+      "body": "Pick a repo to discover its project-context documents."
+    },
+    "cloneUnavailable": {
+      "title": "Clone not available",
+      "body": "This repo hasn't been cloned yet, so no documents can be discovered."
+    },
+    "empty": {
+      "title": "No documents found",
+      "body": "No specs, docs, or insights markdown files were discovered in this repo's clone."
+    },
+    "noResults": "No documents match \"{query}\"."
   }
 }

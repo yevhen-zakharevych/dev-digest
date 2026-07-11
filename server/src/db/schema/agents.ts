@@ -29,6 +29,11 @@ export const agents = pgTable('agents', {
   // + file-rank note) injected into the prompt. Default on; the global
   // REPO_INTEL_ENABLED flag is the second gate (facade degrades when off).
   repoIntel: boolean('repo_intel').notNull().default(true),
+  // Ordered repo-relative paths of project-context documents injected into this
+  // agent's review prompt (unioned with the docs its ENABLED skills contribute).
+  // Paths only — document text is read fresh from the clone at run time.
+  // Mutable config: writing it must NOT snapshot a new `agent_versions` row.
+  attachedDocs: jsonb('attached_docs').$type<string[]>(),
   enabled: boolean('enabled').notNull().default(true),
   version: integer('version').notNull().default(1),
   createdBy: uuid('created_by').references(() => users.id),

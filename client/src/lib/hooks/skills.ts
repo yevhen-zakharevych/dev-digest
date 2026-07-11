@@ -81,6 +81,20 @@ export function useUpdateSkill() {
   });
 }
 
+/** Persist a skill's ordered project-context document paths (attach/detach/
+ *  reorder). Mutable config — does NOT bump the skill's version. */
+export function useSetSkillAttachedDocs() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ skillId, paths }: { skillId: string; paths: string[] }) =>
+      api.put<Skill>(`/skills/${skillId}/docs`, { paths }),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["skills"] });
+      qc.setQueryData(["skill", data.id], data);
+    },
+  });
+}
+
 export function useDeleteSkill() {
   const qc = useQueryClient();
   return useMutation({

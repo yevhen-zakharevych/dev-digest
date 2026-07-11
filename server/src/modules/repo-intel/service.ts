@@ -33,6 +33,7 @@ import type {
   BlastCallerRow,
   BlastChangedSymbol,
   BlastResult,
+  FanCountRow,
   FileRankRow,
   IndexResult,
   IndexState,
@@ -705,6 +706,37 @@ export class RepoIntelService implements RepoIntel {
       paths.push(chain);
     }
     return paths;
+  }
+
+  /**
+   * Every indexed file path (onboarding analyzer fact). Degraded contract:
+   * `[]` when the flag is off / no index exists — never throws.
+   */
+  async getIndexedFiles(repoId: string): Promise<string[]> {
+    if (!this.container.config.repoIntelEnabled) return [];
+    return this.repo.getIndexedFilePaths(repoId);
+  }
+
+  /**
+   * Per-file fan-in/fan-out from the import graph (`file_edges`), for the
+   * onboarding complexity badge. Degraded contract: `[]` when the flag is off /
+   * no edges exist — never throws.
+   */
+  async getFanCounts(repoId: string): Promise<FanCountRow[]> {
+    if (!this.container.config.repoIntelEnabled) return [];
+    const edges = await this.repo.getEdges(repoId);
+    if (edges.length === 0) return [];
+    const counts = new Map<string, { fanIn: number; fanOut: number }>();
+    const bump = (path: string, key: 'fanIn' | 'fanOut') => {
+      const c = counts.get(path) ?? { fanIn: 0, fanOut: 0 };
+      c[key] += 1;
+      counts.set(path, c);
+    };
+    for (const e of edges) {
+      bump(e.fromFile, 'fanOut'); // importer → this file imports another
+      bump(e.toFile, 'fanIn'); // imported → another file imports this
+    }
+    return [...counts].map(([path, c]) => ({ path, fanIn: c.fanIn, fanOut: c.fanOut }));
   }
 }
 

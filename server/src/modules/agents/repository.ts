@@ -279,4 +279,29 @@ export class AgentsRepository {
         })),
       );
   }
+
+  // ---- attached_docs (project-context docs, mutable config) ---------------
+
+  /**
+   * Replace the ordered list of attached-doc paths for an agent (attach /
+   * detach / reorder — an empty array detaches all). Order is the injection
+   * order (AC-10); paths only, never document text (AC-9). Writes the column
+   * directly, bypassing `update()`/`isConfigChange` on purpose — this must NOT
+   * bump `agents.version` or write an `agent_versions` snapshot row (AC-14),
+   * mirroring how `setSkills` above bypasses the same versioning path for the
+   * agent_skills link table. Returns undefined if no such agent exists in the
+   * workspace (route → 404).
+   */
+  async setAttachedDocs(
+    workspaceId: string,
+    agentId: string,
+    paths: string[],
+  ): Promise<AgentRow | undefined> {
+    const [row] = await this.db
+      .update(t.agents)
+      .set({ attachedDocs: paths })
+      .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.id, agentId)))
+      .returning();
+    return row;
+  }
 }

@@ -61,6 +61,7 @@
     "tabs": {
       "config": "Config",
       "preview": "Preview",
+      "context": "Context",
       "stats": "Stats",
       "versions": "Versions"
     },
@@ -117,5 +118,43 @@
     "linkPicker": "Select a skill to link",
     "unlink": "Unlink",
     "noUnlinkedSkills": "No more skills to link"
+  },
+  "contextTab": {
+    "attachedCount": "{count} attached",
+    "searchPlaceholder": "Search documents by name or path…",
+    "inheritNote": "Any agent using this skill inherits these documents.",
+    "noRepo": {
+      "title": "No repo selected",
+      "body": "Pick a repo to discover its project-context documents."
+    },
+    "cloneUnavailable": {
+      "title": "Clone not available",
+      "body": "This repo hasn't been cloned yet, so no documents can be discovered."
+    },
+    "empty": {
+      "title": "No documents found",
+      "body": "No specs, docs, or insights markdown files were discovered in this repo's clone."
+    },
+    "noResults": "No documents match \"{query}\".",
+    "bucket": {
+      "specs": "specs",
+      "docs": "docs",
+      "insights": "insights"
+    },
+    "attach": "Attach",
+    "detach": "Detach",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "preview": "Preview",
+    "tokens": "{count} tokens",
+    "usedByAgents": "Used by {count, plural, =0 {0 agents} one {# agent} other {# agents}}",
+    "serializesAs": {
+      "heading": "Serializes as",
+      "subheading": "How this skill contributes documents to the assembled prompt.",
+      "empty": "No documents attached — this skill contributes nothing to \"## Project context\"."
+    },
+    "previewModal": {
+      "title": "Preview"
+    }
   }
 }

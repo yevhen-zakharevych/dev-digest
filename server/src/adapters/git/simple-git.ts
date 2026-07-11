@@ -1,6 +1,6 @@
 import { simpleGit, type SimpleGit } from 'simple-git';
-import { isAbsolute, join, resolve, sep } from 'node:path';
-import { mkdir, readFile, realpath, access, rm } from 'node:fs/promises';
+import { isAbsolute, join, posix, relative, resolve, sep } from 'node:path';
+import { mkdir, readFile, readdir, realpath, access, rm, stat, writeFile } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import type {
   GitClient,
@@ -9,6 +9,7 @@ import type {
   UnifiedDiff,
   BlameLine,
   GitCommit,
+  RepoFileEntry,
 } from '@devdigest/shared';
 import { parseUnifiedDiff } from './diff-parser.js';
 
@@ -149,6 +150,79 @@ export class SimpleGitClient implements GitClient {
   }
 
   /**
+   * Sandboxed write into the clone's WORKING TREE, guarded by the same
+   * `safeResolve` used for reads: `..`-escapes, absolute paths, NUL bytes and
+   * out-of-tree symlinks are refused. Because `safeResolve` calls `realpath`,
+   * this only ever overwrites an EXISTING file — creating new files is out of
+   * scope, and a vanished path returns `false` rather than resurrecting it.
+   *
+   * Deliberately performs NO git operation. The write lives in the working
+   * tree only, so `sync()`'s `git reset --hard` discards it for a tracked file.
+   * Never throws; returns `false` on any unsafe or failed write.
+   */
+  async writeFileSafe(repo: RepoRef, relPath: string, text: string): Promise<boolean> {
+    const cloneRoot = this.clonePathFor(repo);
+    const abs = await this.safeResolve(cloneRoot, relPath);
+    if (!abs) return false;
+    try {
+      await writeFile(abs, text, 'utf8');
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Walk the clone's working tree for `*.md` files, returning repo-relative
+   * POSIX paths and byte sizes. File CONTENTS are never read — the byte size
+   * is what a caller turns into a token estimate, keeping discovery cheap.
+   *
+   * Symlinks (file OR directory) are skipped outright rather than resolved:
+   * that is strictly stronger than checking where they point, and it removes
+   * any chance of escaping the clone or looping. `.git` is skipped.
+   * Returns `null` when the clone directory does not exist.
+   */
+  async listMarkdownFilesSafe(repo: RepoRef): Promise<RepoFileEntry[] | null> {
+    const rawRoot = this.clonePathFor(repo);
+    if (!(await this.exists(rawRoot))) return null;
+    // Resolve any symlinked ancestor (e.g. macOS `/tmp` -> `/private/tmp`) ONCE,
+    // so the walk root + every returned repo-relative path are computed
+    // against the SAME canonical root `safeResolve` compares against below.
+    // Without this, a symlinked ancestor makes discovery list documents that
+    // `readFileSafe`/`writeFileSafe` then refuse for every one of them (AC-1
+    // vs AC-30) — `realpath` never fails here since `exists()` above already
+    // confirmed the raw path resolves, but fall back defensively regardless.
+    const cloneRoot = await realpath(rawRoot).catch(() => rawRoot);
+
+    const out: RepoFileEntry[] = [];
+    const walk = async (dir: string): Promise<void> => {
+      let entries;
+      try {
+        entries = await readdir(dir, { withFileTypes: true });
+      } catch {
+        return; // unreadable subtree — skip, don't fail the whole walk
+      }
+      for (const entry of entries) {
+        if (entry.isSymbolicLink()) continue;
+        const abs = join(dir, entry.name);
+        if (entry.isDirectory()) {
+          if (entry.name === '.git') continue;
+          await walk(abs);
+        } else if (entry.isFile() && entry.name.toLowerCase().endsWith('.md')) {
+          try {
+            const { size } = await stat(abs);
+            out.push({ path: relative(cloneRoot, abs).split(sep).join(posix.sep), bytes: size });
+          } catch {
+            // vanished between readdir and stat — skip
+          }
+        }
+      }
+    };
+    await walk(cloneRoot);
+    return out;
+  }
+
+  /**
    * Resolve `rel` against `cloneRoot`, refusing anything that escapes it via
    * `..` traversal or a symlink pointing outside the clone. Returns the
    * resolved absolute path, or `null` when unsafe / non-existent.
@@ -157,10 +231,20 @@ export class SimpleGitClient implements GitClient {
     if (!rel || isAbsolute(rel) || rel.includes('\0')) return null;
     const target = resolve(cloneRoot, rel);
     const rootWithSep = cloneRoot.endsWith(sep) ? cloneRoot : cloneRoot + sep;
+    // Cheap, filesystem-free reject: does the resolved string even start with
+    // the raw root? This catches an obvious `..`-escape before we touch disk.
     if (target !== cloneRoot && !target.startsWith(rootWithSep)) return null;
     try {
-      const real = await realpath(target);
-      if (real !== cloneRoot && !real.startsWith(rootWithSep)) return null;
+      // Realpath BOTH the target AND the root before the real containment
+      // check (FIX 3). Comparing a realpath'd target against a non-realpath'd
+      // root always mismatches when any ancestor of `cloneRoot` is a symlink
+      // (macOS `/tmp` -> `/private/tmp`), refusing every otherwise-valid
+      // in-tree path — this is what made discovery list documents that this
+      // same guard then rejected. Realpathing both sides keeps the guard just
+      // as strict against a genuine out-of-tree symlink escape.
+      const [real, realRoot] = await Promise.all([realpath(target), realpath(cloneRoot)]);
+      const realRootWithSep = realRoot.endsWith(sep) ? realRoot : realRoot + sep;
+      if (real !== realRoot && !real.startsWith(realRootWithSep)) return null;
       return real;
     } catch {
       return null;

@@ -4,7 +4,7 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { Badge } from "@devdigest/ui";
+import { Badge, Icon } from "@devdigest/ui";
 import type { RunTrace, FindingRecord } from "@devdigest/shared";
 import { PROMPT_COLORS } from "../../constants";
 import { formatCost } from "@devdigest/ui";
@@ -36,19 +36,35 @@ export function TraceBody({ trace, findings }: { trace: RunTrace; findings: Find
           <Row label={t("trace.config.memoryPulled")}>
             <span>{t("trace.config.items", { count: trace.memory_pulled.length })}</span>
           </Row>
-          <Row label={t("trace.config.specsRead")}>
-            <div style={s.specsWrap}>
-              {trace.specs_read.length === 0 ? (
-                <span style={s.specsNone}>{t("trace.config.none")}</span>
-              ) : (
-                trace.specs_read.map((sp, i) => (
-                  <span key={i} className="mono" style={s.spec}>
-                    {sp}
-                  </span>
-                ))
-              )}
+          <div data-testid="specs-read-row">
+            <Row label={t("trace.config.specsRead")}>
+              <div style={s.specsWrap}>
+                {trace.specs_read.length === 0 ? (
+                  <span style={s.specsNone}>{t("trace.config.none")}</span>
+                ) : (
+                  trace.specs_read.map((sp, i) => (
+                    <span key={i} className="mono" style={s.spec}>
+                      {sp}
+                    </span>
+                  ))
+                )}
+              </div>
+            </Row>
+          </div>
+          {trace.specs_missing.length > 0 && (
+            <div data-testid="specs-missing-row">
+              <Row label={t("trace.config.specsMissing")}>
+                <div style={s.specsWrap}>
+                  {trace.specs_missing.map((sp, i) => (
+                    <span key={i} className="mono" style={{ ...s.spec, color: "var(--warn)" }}>
+                      <Icon.AlertTriangle size={12} style={{ marginRight: 4, verticalAlign: "-1px" }} />
+                      {sp}
+                    </span>
+                  ))}
+                </div>
+              </Row>
             </div>
-          </Row>
+          )}
         </div>
       </TraceSection>
 

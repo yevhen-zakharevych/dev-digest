@@ -92,6 +92,19 @@ Prereq: the API must be up (`./scripts/dev.sh`). If a tool returns
 `INSIGHTS.md`. Before proposing changes, confirm you've read them and
 summarize the top 3 most relevant points for the task at hand.
 
+This wholesale read is the **main thread's** job, done **once per session** — the
+orchestrator holds the landmine context for the whole run. A **scoped** subagent —
+one that owns a handful of files (an `implementer`) — must NOT re-read the
+`INSIGHTS.md` files in full: the orchestrator extracts the 3-5 landmines relevant to
+that subagent's files and quotes them (with `file:line`) in the spawn prompt, and
+the subagent uses a targeted `grep -n <term>` (reading only the matching entry) for
+anything its card missed. One root `INSIGHTS.md` re-read by every agent in a fan-out
+is the largest avoidable token cost of a fleet (measured: ~14 re-reads of one 26k-
+token file in the L05 run). A **whole-diff** agent (`plan-verifier`,
+`architecture-reviewer`, `implementation-planner`) reasons across everything and may
+still read broadly — but there are only one of each, so they are not the cost
+driver; hand them the load-bearing landmines too, but don't starve them of breadth.
+
 **During work.** When you notice a non-obvious finding (pattern that worked,
 antipattern, dependency quirk, recurring error, open question) — invoke the
 `engineering-insights` skill. Do not defer to the end of the session.

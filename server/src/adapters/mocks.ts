@@ -22,6 +22,7 @@ import type {
   UnifiedDiff,
   BlameLine,
   GitCommit,
+  RepoFileEntry,
   CodeIndex,
   CodeMatch,
   CodeSymbol,
@@ -249,11 +250,19 @@ export interface MockGitOptions {
   head?: string;
   /** Head `currentHead()` returns AFTER `sync()` runs — simulates fetch+reset advancing HEAD. */
   syncedHead?: string;
+  /**
+   * Simulate a repo with no clone on disk: `listMarkdownFilesSafe` returns
+   * `null` and every guarded read/write fails. Drives the "clone not
+   * available" discovery state and the fail-soft run-time skip.
+   */
+  cloneMissing?: boolean;
 }
 
 export class MockGitClient implements GitClient {
   public cloned: { repo: RepoRef; url: string }[] = [];
   public syncs: { repo: RepoRef; branch: string }[] = [];
+  /** Every accepted `writeFileSafe` call — assert edit-in-place saves. */
+  public writes: { path: string; text: string }[] = [];
   private syncedHead?: string;
 
   constructor(private opts: MockGitOptions = {}) {}
@@ -294,8 +303,35 @@ export class MockGitClient implements GitClient {
     return this.opts.files?.[path] ?? '';
   }
   async readFileSafe(_repo: RepoRef, path: string): Promise<string | null> {
+    if (this.opts.cloneMissing || !isSafeRelPath(path)) return null;
     return this.opts.files?.[path] ?? null;
   }
+  /**
+   * Mirrors `SimpleGitClient.writeFileSafe`: refuses unsafe paths and a missing
+   * clone, otherwise writes into the in-memory `files` map so a subsequent
+   * `readFileSafe` observes the new text (the "next run reads fresh" contract).
+   */
+  async writeFileSafe(_repo: RepoRef, path: string, text: string): Promise<boolean> {
+    if (this.opts.cloneMissing || !isSafeRelPath(path)) return false;
+    this.opts.files ??= {};
+    if (!(path in this.opts.files)) return false; // edit-in-place only; no create
+    this.opts.files[path] = text;
+    this.writes.push({ path, text });
+    return true;
+  }
+  /** Every `.md` key of `files`, with byte sizes. `null` when the clone is absent. */
+  async listMarkdownFilesSafe(_repo: RepoRef): Promise<RepoFileEntry[] | null> {
+    if (this.opts.cloneMissing) return null;
+    return Object.entries(this.opts.files ?? {})
+      .filter(([path]) => path.endsWith('.md'))
+      .map(([path, text]) => ({ path, bytes: Buffer.byteLength(text, 'utf8') }));
+  }
+}
+
+/** Shape-only guard mirroring `SimpleGitClient.safeResolve`'s cheap rejections. */
+function isSafeRelPath(rel: string): boolean {
+  if (!rel || rel.startsWith('/') || rel.includes('\0')) return false;
+  return !rel.split('/').includes('..');
 }
 
 // ---------- Mock CodeIndex ----------

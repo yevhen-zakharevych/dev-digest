@@ -4,18 +4,28 @@ Reusable AI skills that provide specialized knowledge and workflows. Canonical l
 
 ## Catalog
 
+Seventeen skills. Keep this table in sync with the directories — nothing validates it,
+so a stale row is invisible until an agent trusts it.
+
 | Skill | Scope | Description |
 |-------|-------|-------------|
-| [fastify-best-practices](fastify-best-practices/SKILL.md) | Backend | Fastify routes, plugins, JSON-schema validation, error handling |
+| [fastify-best-practices](fastify-best-practices/SKILL.md) | Backend | Fastify 5 routes, plugins, hooks, Zod validation, error handling, Pino logging |
 | [drizzle-orm-patterns](drizzle-orm-patterns/SKILL.md) | Backend | Drizzle schema, queries, relations, transactions, migrations |
 | [postgresql-table-design](postgresql-table-design/SKILL.md) | Backend | Postgres schema design, data types, indexing, constraints |
 | [next-best-practices](next-best-practices/SKILL.md) | Frontend | Next.js App Router, RSC boundaries, data fetching, optimization |
 | [react-best-practices](react-best-practices/SKILL.md) | Frontend | React anti-patterns, state management, hooks rules |
-| [react-testing-library](react-testing-library/SKILL.md) | Frontend | General-purpose React Testing Library guide with Vitest |
+| [react-testing-library](react-testing-library/SKILL.md) | Frontend | React component + hook tests with Vitest and RTL |
 | [zod](zod/SKILL.md) | Full-stack | Zod schema validation, parsing, error handling, type inference |
 | [typescript-expert](typescript-expert/SKILL.md) | Full-stack | Type-level programming, performance, tooling, migrations |
-| [security](security/SKILL.md) | Full-stack | OWASP Top 10:2025, auth, injection, uploads, secrets |
+| [security](security/SKILL.md) | Full-stack | This repo's real stack: OWASP API Top 10 for `server/`, Web Top 10:2025 for `client/`, plus the `INJECTION_GUARD` defense |
+| [onion-architecture](onion-architecture/SKILL.md) | Architecture | Ports & adapters for backend modules: layer rules, DI composition root, repository pattern |
+| [frontend-architecture](frontend-architecture/SKILL.md) | Architecture | Where files live in React + Next.js: feature modules, component splits, module boundaries |
 | [mermaid-diagram](mermaid-diagram/SKILL.md) | Shared | Mermaid diagrams in markdown (flowcharts, sequence, ERD, …) |
+| [impl](impl/SKILL.md) | Process | Executes an existing `docs/plans/*.md`: implementer waves, review wave, bounded fix loop, PR gate |
+| [pr-self-review](pr-self-review/SKILL.md) | Process | Local pre-PR gate. Routes changed files to the right skills; blocks on any CRITICAL finding |
+| [engineering-insights](engineering-insights/SKILL.md) | Process | Appends non-obvious findings to the touched module's `INSIGHTS.md` |
+| [workflow-retro](workflow-retro/SKILL.md) | Process | Post-mortem of a multi-agent run: waves, tokens, duplicated context, next-run changes |
+| [cross-model-plan-review](cross-model-plan-review/SKILL.md) | Process | Second opinion on a `docs/plans/*.md` from a non-Anthropic model (via OpenRouter), cast as a skeptical staff engineer |
 
 ## What Are Skills?
 
