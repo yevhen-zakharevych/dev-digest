@@ -1,9 +1,10 @@
 /* PrBriefCard.helpers.ts — pure, render-free helpers for PrBriefCard.
-   Split out so the reason->i18n mapping and the risk-level color/icon table
-   are unit-testable without mounting React (frontend-architecture: co-located
-   helpers for a single-consumer component). */
-import type { IconName } from "@devdigest/ui";
-import type { BriefDegradedReason, RiskSeverity } from "@devdigest/shared";
+   Split out so the reason->i18n mapping is unit-testable without mounting
+   React (frontend-architecture: co-located helpers for a single-consumer
+   component). The risk-level color/icon table moved to
+   `../../_lib/riskLevel.constants.ts` once `RiskAreasCard` became a second
+   consumer. */
+import type { BriefDegradedReason } from "@devdigest/shared";
 import type { useTranslations } from "next-intl";
 
 type Translator = ReturnType<typeof useTranslations>;
@@ -28,23 +29,3 @@ export function degradedReasonLabel(
     ? t(`degraded.reason.${reason}`)
     : reason;
 }
-
-export interface RiskLevelMeta {
-  color: string;
-  bg: string;
-  icon: IconName;
-}
-
-/**
- * Color + icon per brief `risk_level`. The component ALWAYS pairs this with
- * a text label (AC-12 — color is a supplement, never the sole signal).
- * Deliberately a separate table from `vendor/ui/primitives/tokens.ts`'
- * `UISeverity`/`SEV` — that vocabulary (CRITICAL/WARNING/SUGGESTION/INFO)
- * belongs to review findings, not the brief's independent risk judgement
- * (AC-11: `risk_level` is never derived from or reconciled with review data).
- */
-export const RISK_LEVEL_META: Record<RiskSeverity, RiskLevelMeta> = {
-  high: { color: "var(--crit)", bg: "var(--crit-bg)", icon: "AlertOctagon" },
-  medium: { color: "var(--warn)", bg: "var(--warn-bg)", icon: "AlertTriangle" },
-  low: { color: "var(--ok)", bg: "var(--ok-bg)", icon: "CheckCircle" },
-};

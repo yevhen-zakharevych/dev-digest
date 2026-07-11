@@ -4,6 +4,7 @@ import React from "react";
 import { SectionLabel } from "@devdigest/ui";
 import { PrBriefCard } from "../PrBriefCard/PrBriefCard";
 import { IntentCard } from "../IntentCard/IntentCard";
+import { RiskAreasCard } from "../RiskAreasCard/RiskAreasCard";
 import { BlastRadiusCard } from "../BlastRadiusCard/BlastRadiusCard";
 import { ReviewFocusCard } from "../ReviewFocusCard/ReviewFocusCard";
 import { s } from "./styles";
@@ -26,7 +27,10 @@ export function OverviewTab({ prId, prBody, repoId, repoFullName, sha, onOpenFil
         <>
           <PrBriefCard prId={prId} repoId={repoId} />
           <div style={s.cardRow}>
-            <IntentCard prId={prId} />
+            <div style={s.intentColumn}>
+              <IntentCard prId={prId} />
+              <RiskAreasCard prId={prId} onOpenFile={onOpenFile} />
+            </div>
             <BlastRadiusCard prId={prId} repoId={repoId} repoFullName={repoFullName} sha={sha} />
           </div>
           <ReviewFocusCard prId={prId} onOpenFile={onOpenFile} />

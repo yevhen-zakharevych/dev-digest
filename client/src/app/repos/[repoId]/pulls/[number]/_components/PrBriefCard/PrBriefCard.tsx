@@ -35,7 +35,8 @@ import {
 } from "@devdigest/ui";
 import { usePrBrief, useGenerateBrief } from "@/lib/hooks/brief";
 import { usePrReviews } from "@/lib/hooks/reviews";
-import { degradedReasonLabel, RISK_LEVEL_META } from "./PrBriefCard.helpers";
+import { degradedReasonLabel } from "./PrBriefCard.helpers";
+import { RISK_LEVEL_META } from "../../_lib/riskLevel.constants";
 
 export interface PrBriefCardProps {
   prId: string | number;

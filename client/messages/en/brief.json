@@ -29,6 +29,7 @@
     "low": "Low risk"
   },
   "reviewFocus": "Review focus — read these first",
+  "riskAreas": "Risk areas",
   "reviewScore": "Review score",
   "findingsMeta": "{count, plural, one {# finding} other {# findings}}",
   "blockersMeta": " · {count, plural, one {# blocker} other {# blockers}}",
