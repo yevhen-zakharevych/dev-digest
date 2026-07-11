@@ -1,6 +1,6 @@
 ---
 name: workflow-retro
-description: Post-mortem for a multi-agent run. Reconstructs what the fleet actually did — agent count, launch order, concurrency, tokens per agent, duplicated context acquisition, tool-error hotspots — from the session transcript, and turns it into an orchestration retro with concrete next-run changes. Use after a workflow/fleet finishes (spec-creator, implementation-planner, /impl, or any parallel Agent fan-out). Trigger: /workflow-retro [session-id].
+description: "Post-mortem for a multi-agent run. Reconstructs what the fleet actually did — agent count, launch order, concurrency, tokens per agent, duplicated context acquisition, tool-error hotspots — from the session transcript, and turns it into an orchestration retro with concrete next-run changes. Use after a workflow/fleet finishes (spec-creator, implementation-planner, /impl, or any parallel Agent fan-out). Trigger: /workflow-retro [session-id]."
 ---
 
 # workflow-retro — did the fleet earn its tokens?

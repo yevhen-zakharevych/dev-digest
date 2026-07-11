@@ -7,11 +7,17 @@ description: Captures non-obvious engineering insights (patterns that worked, an
 
 When you encounter a non-obvious finding while working — or at task wrap-up — append it to the right `INSIGHTS.md`.
 
-**Routing.** Pick the file by which paths the task touched:
+## Routing
+
+Pick the file by which paths the task touched:
 `client/**` → `client/INSIGHTS.md`; `server/**` → `server/INSIGHTS.md`;
 `reviewer-core/**` → `reviewer-core/INSIGHTS.md`;
 `e2e/**` → `e2e/INSIGHTS.md`; otherwise → root `INSIGHTS.md`.
 
-**Section.** Choose one: `What Works` / `What Doesn't Work` / `Codebase Patterns` / `Tool & Library Notes` / `Recurring Errors & Fixes` / `Session Notes` (datestamped `### YYYY-MM-DD — title`) / `Open Questions`. Append; never edit existing entries.
+## Section
 
-**Quality test.** Each entry must be actionable cold and cite `file:line`. If it would be obvious to anyone reading the code, do not write it.
+Choose one: `What Works` / `What Doesn't Work` / `Codebase Patterns` / `Tool & Library Notes` / `Recurring Errors & Fixes` / `Session Notes` (datestamped `### YYYY-MM-DD — title`) / `Open Questions`. Append; never edit existing entries.
+
+## Quality test
+
+Each entry must be actionable cold and cite `file:line`. If it would be obvious to anyone reading the code, do not write it.
