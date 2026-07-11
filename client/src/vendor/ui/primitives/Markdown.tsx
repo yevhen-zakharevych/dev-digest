@@ -2,6 +2,19 @@ import React from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
+const SAFE_URL_PROTOCOLS = new Set(["http:", "https:", "mailto:"]);
+
+/** Repo-authored markdown can embed a `javascript:` (or similar) href; only
+    allow protocols that can't execute script, plus protocol-relative links. */
+function isSafeHref(href: string): boolean {
+  if (href.startsWith("#") || href.startsWith("/")) return true;
+  try {
+    return SAFE_URL_PROTOCOLS.has(new URL(href, "http://localhost").protocol);
+  } catch {
+    return false;
+  }
+}
+
 /** Markdown renderer (replaces prototype mdLite). Inline + GFM. */
 export function Markdown({ children }: { children?: string | null }) {
   if (!children) return null;
@@ -29,7 +42,11 @@ export function Markdown({ children }: { children?: string | null }) {
             </code>
           ),
           a: ({ children, href }) => (
-            <a href={href} style={{ color: "var(--accent-text)", textDecoration: "underline" }}>
+            <a
+              href={href && isSafeHref(href) ? href : undefined}
+              rel="noopener noreferrer"
+              style={{ color: "var(--accent-text)", textDecoration: "underline" }}
+            >
               {children}
             </a>
           ),
