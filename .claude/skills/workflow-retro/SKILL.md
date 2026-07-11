@@ -1,9 +1,9 @@
 ---
-name: fleet-retro
-description: Post-mortem for a multi-agent run. Reconstructs what the fleet actually did — agent count, launch order, concurrency, tokens per agent, duplicated context acquisition, tool-error hotspots — from the session transcript, and turns it into an orchestration retro with concrete next-run changes. Use after a workflow/fleet finishes (spec-creator, implementation-planner, /impl, or any parallel Agent fan-out). Trigger: /fleet-retro [session-id].
+name: workflow-retro
+description: Post-mortem for a multi-agent run. Reconstructs what the fleet actually did — agent count, launch order, concurrency, tokens per agent, duplicated context acquisition, tool-error hotspots — from the session transcript, and turns it into an orchestration retro with concrete next-run changes. Use after a workflow/fleet finishes (spec-creator, implementation-planner, /impl, or any parallel Agent fan-out). Trigger: /workflow-retro [session-id].
 ---
 
-# fleet-retro — did the fleet earn its tokens?
+# workflow-retro — did the fleet earn its tokens?
 
 `engineering-insights` records what we learned **about the code**.
 This skill records what we learned **about the orchestration**: how many agents ran,
@@ -28,8 +28,8 @@ fan-out got wrong. Different lens, different artifact, no overlap.
 ### 1. Collect
 
 ```bash
-.claude/skills/fleet-retro/scripts/collect.sh            # current session
-.claude/skills/fleet-retro/scripts/collect.sh <session>  # a specific one
+.claude/skills/workflow-retro/scripts/collect.sh            # current session
+.claude/skills/workflow-retro/scripts/collect.sh <session>  # a specific one
 ```
 
 Returns `{session, span, main_thread, agents[], totals, duplicated_reads[]}`. Each agent
@@ -84,6 +84,12 @@ Append a dated entry to `docs/retros/YYYY-MM-DD-<slug>.md` (get the date with
 - **Change next run** — a numbered list of concrete, *actionable* changes to the spawn
   prompts, the wave structure, or the model routing. Not "communicate better."
 
+Then append one row to `docs/retros/ledger.md` (create it from the header in an
+existing row if it doesn't exist yet): date, link to the retro file, session id,
+agent count, fix-loop iterations, total output, total cache-read, one-line headline.
+Copy numbers from the sections you just wrote — don't recompute. Leave a cell `—`
+if this run didn't produce that number. Append-only: never edit or reorder past rows.
+
 Then, if and only if a lesson generalises beyond this feature, invoke
 `engineering-insights` with that one lesson. Do not paste the metrics into `INSIGHTS.md`.
 
@@ -136,9 +142,10 @@ State plainly in the retro which of the two mechanisms was active. If neither wa
    that over-specified. Both sides are in the transcript.
 5. **Compare against the plan.** `docs/plans/*.md` declares waves and file ownership.
    Diffing declared-vs-actual catches an orchestrator that improvised away from its plan.
-6. **A cross-session trend line.** `collect.sh` takes a session id, so running it over the
-   last N sessions yields tokens-per-feature and agents-per-feature over time. That is the
-   only way to know whether the fleet is getting cheaper or just busier.
+
+A cross-session trend line is already live: step 4 appends one row per run to
+`docs/retros/ledger.md`, giving tokens-per-feature and agents-per-feature over time
+without re-running `collect.sh` over old sessions.
 
 Deliberately *not* recommended: scoring agents against each other. They get different
 tasks with different difficulty, and a leaderboard would optimise the fleet for whatever
