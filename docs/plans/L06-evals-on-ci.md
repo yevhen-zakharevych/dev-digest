@@ -60,21 +60,21 @@ on suites of 5–6 cases:
 ## 3. Job graph
 
 ```
-detect ──┬─> static      (no model, always, BLOCKING)
-         ├─> skills      (matrix, content tier — DIRECT to OpenRouter, no proxy, BLOCKING)
-         ├─> agents      (matrix, tool tier — needs LiteLLM proxy, BLOCKING)
-         └─> workflow    (tool tier — needs LiteLLM proxy, NON-BLOCKING)
+changes ──┬─> static      (no model, always, BLOCKING)
+          ├─> skills      (matrix, content tier, deepseek-chat, BLOCKING)
+          ├─> agents      (matrix, tool tier,   haiku-4.5,      BLOCKING)
+          └─> workflow    (tool tier,           haiku-4.5,      NON-BLOCKING)
 ```
 
-- **`detect`** — checkout `fetch-depth: 0`, `git diff --name-only origin/$BASE...HEAD`, feed
-  `CHANGED_FILES` to `ci-detect.mjs`, publish its outputs. ~20 s, no model.
-- **`static`** — `pnpm typecheck` + `pnpm eval:quality`. Free; run it even when nothing else does.
-- **`skills`** — `strategy.matrix.skill: fromJSON(needs.detect.outputs.skills)`,
-  `if: skills != '[]'`. Content tier reaches OpenRouter natively (`src/runtime/dispatch.ts`) —
-  **no proxy needed**.
-- **`agents`** / **`workflow`** — tool tiers. They run inside the Claude Agent SDK, which speaks
-  the Anthropic wire protocol, so a non-Anthropic model needs the LiteLLM proxy: bring it up,
-  `pnpm proxy:wait`, run, dump logs on failure, tear down.
+**No Docker anywhere** — see §2.2. Every job is checkout → pnpm → run.
+
+- **`changes`** — checkout `fetch-depth: 0`, `git diff --name-only <base>...HEAD`, feed
+  `CHANGED_FILES` to `ci-detect.mjs`, publish its outputs. ~20 s, no model. Skips forked PRs.
+- **`static`** — `pnpm typecheck` + `pnpm eval:quality`. Free; runs even when nothing else does.
+- **`skills`** — matrix over `fromJSON(needs.changes.outputs.skills)`. The content tier has no
+  tools and reaches OpenRouter through a plain `chat.completions` call (`src/runtime/dispatch.ts`).
+- **`agents`** / **`workflow`** — tool tiers, inside the Claude Agent SDK, on an `anthropic/*` slug
+  served natively by OpenRouter's Anthropic skin.
 
 ## 4. Landmines this plan is written against
 
@@ -82,10 +82,11 @@ detect ──┬─> static      (no model, always, BLOCKING)
    non-matching PR stuck on "Expected" forever. Filtering lives in `detect` + per-job `if:`
    instead — a *skipped* job counts as success for branch protection. Cost: ~20 s of runner time
    per PR.
-2. **The vitest filter needs a trailing slash.** Verified 2026-07-12:
-   `vitest list agents/architecture-reviewer` matches **10** tests (it is a substring match, so it
-   also captures `agents/architecture-reviewer-lite/`); `agents/architecture-reviewer/` matches 5.
-   Without the slash a one-agent PR silently pays for the A/B twin too.
+2. **The vitest filter needs a trailing slash.** It is a substring match, so `agents/foo` also
+   selects `agents/foo-bar/`. Verified 2026-07-12, while the `architecture-reviewer-lite` A/B twin
+   still existed: `vitest list agents/architecture-reviewer` matched **10** tests vs **5** with the
+   slash — a one-agent PR silently paid for the twin too. The twin was removed in `62774b1`, so no
+   prefix-sharing pair exists today; the slash stays because the bug returns with the next one.
 3. **`OPENROUTER_BASE_URL` must stay unset** (see §2.2). It is read by *two* independent places —
    the SDK's base (`env.ts`) and the judge's base (`run-openrouter.ts:18`) — so a stray value
    rebases both onto a proxy that no longer runs in CI.
@@ -117,7 +118,7 @@ Done (offline):
   agent-without-evals (→ `skipped_agents`, workflow tier still runs), `.claude/agents/README.md`
   (→ fully inert), `CLAUDE.md`, eval-fixture-only (→ agent evals, no workflow tier), unrelated code
   (→ nothing).
-- vitest filters select exactly 6 / 5 / 5 tests — the agents filter excludes the `-lite` twin.
+- vitest filters select exactly 6 / 5 / 5 tests.
 - `pnpm typecheck`, `pnpm eval:quality` — green.
 
 Not done — **no model has actually been run**. Needs `OPENROUTER_API_KEY`:

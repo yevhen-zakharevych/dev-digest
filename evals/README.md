@@ -237,9 +237,10 @@ Two traps the workflow is written against, worth knowing if you adapt it:
 - **No `paths:` filter on `on:`.** A required check with a `paths:` filter leaves every non-matching
   PR stuck on "Expected" forever. The filtering is done by the `changes` job + per-job `if:` instead —
   a *skipped* job counts as success for branch protection.
-- **The vitest filter needs a trailing slash.** `vitest run agents/architecture-reviewer` is a
-  *substring* match and also selects `agents/architecture-reviewer-lite/` — 10 tests instead of 5,
-  i.e. double the bill, silently.
+- **The vitest filter needs a trailing slash.** `vitest run agents/foo` is a *substring* match, so
+  it also selects `agents/foo-bar/`. This bit us for real while the `architecture-reviewer-lite`
+  A/B twin existed: the filter picked up 10 tests instead of 5 — double the model bill, silently.
+  No prefix-sharing pair exists today, but the slash stays: the bug returns the moment one does.
 
 ## Module layout — `src/` (the engine)
 

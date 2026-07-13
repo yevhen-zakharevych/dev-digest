@@ -198,10 +198,11 @@ jobs:
           cache-dependency-path: evals/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
 
-      # Trailing slash, again — and here it is not hypothetical: without it
-      # `agents/architecture-reviewer` also matches `agents/architecture-reviewer-lite/`, the
-      # deliberately-weakened A/B twin that imports the SAME cases (verified: 10 tests instead of
-      # 5). The PR would silently pay double and nothing about the run would look wrong.
+      # Trailing slash — and this bit us for real: vitest's positional filter is a SUBSTRING match,
+      # so while `agents/architecture-reviewer-lite/` existed (an A/B twin, since removed in 62774b1)
+      # the filter `agents/architecture-reviewer` selected BOTH — 10 tests instead of 5, i.e. double
+      # the model bill, with nothing about the run looking wrong. Keep the slash: it costs nothing
+      # and the next artifact whose name is a prefix of another's brings the bug straight back.
       - name: Run agent evals
         env:
           AGENT: ${{ matrix.agent }}
