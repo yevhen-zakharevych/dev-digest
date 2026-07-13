@@ -9,7 +9,11 @@
 # duplicated here — it lives in evals/scripts/ci-detect.mjs.
 #
 # MODELS are a job-level knob (not surfaced in any UI):
-#   skills (content tier)      → deepseek/deepseek-chat        cheap; the tier has no tools at all.
+#   skills (content tier)      → anthropic/claude-haiku-4.5    was deepseek/deepseek-chat until CI
+#     measured it on 2026-07-13: DeepSeek reproduced the skill's report TEMPLATE while dropping the
+#     question the prompt asked, and as a judge emitted invalid JSON. It also graded a pairing that
+#     does not exist — a .claude/ skill is invoked by Claude Code, i.e. by a Claude model. Evaluate
+#     an artifact on the family that actually runs it. See the job for the full note.
 #   agents + workflow (tool)   → anthropic/claude-haiku-4.5    these run INSIDE the Claude Agent SDK
 #     and assert on the trace (tool use, subagent dispatch, Skill activation). The cheap OSS models
 #     are too noisy there — deepseek/gpt-4.1-mini do the work INLINE instead of dispatching a
@@ -38,7 +42,7 @@ on:
     inputs:
       skills_model:
         description: 'OpenRouter slug for the skills (content) tier'
-        default: 'deepseek/deepseek-chat'
+        default: 'anthropic/claude-haiku-4.5'
       tool_model:
         description: 'OpenRouter slug for the agents + workflow (tool) tiers'
         default: 'anthropic/claude-haiku-4.5'
@@ -135,8 +139,20 @@ jobs:
     env:
       EVAL_BACKEND: openrouter
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-      EVAL_MODEL: ${{ inputs.skills_model || 'deepseek/deepseek-chat' }}
-      EVAL_JUDGE_MODEL: ${{ inputs.skills_model || 'deepseek/deepseek-chat' }}
+      # Was deepseek/deepseek-chat, on the reasoning "the content tier has no tools, so the cheapest
+      # writer wins". Measured 2026-07-13 in CI, and that reasoning was wrong on both counts:
+      #
+      #  1. It graded a pairing that does not exist. This skill lives in .claude/skills/ and is
+      #     invoked by Claude Code — i.e. by a Claude model. Scoring it on DeepSeek measured a
+      #     configuration production never runs.
+      #  2. DeepSeek failed it for real, twice. On `picks the audit tool per lockfile` it produced a
+      #     well-formed 5-section report that never once said `pnpm audit`, `npm audit` or
+      #     "lockfile": it reproduced the skill's TEMPLATE and dropped the question the prompt
+      #     actually asked. As a JUDGE it emitted invalid JSON (an unescaped verbatim quote), failing
+      #     a second case on syntax rather than on content.
+      #     The same suite is 6/6 green on claude-haiku (INSIGHTS.md).
+      EVAL_MODEL: ${{ inputs.skills_model || 'anthropic/claude-haiku-4.5' }}
+      EVAL_JUDGE_MODEL: ${{ inputs.skills_model || 'anthropic/claude-haiku-4.5' }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
