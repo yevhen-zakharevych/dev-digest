@@ -10,6 +10,17 @@ export const EVAL_MODEL = process.env.EVAL_MODEL ?? "claude-haiku-4-5";
 export const EVAL_JUDGE_MODEL = process.env.EVAL_JUDGE_MODEL ?? "claude-sonnet-5";
 export const MAX_TURNS = Number(process.env.EVAL_MAX_TURNS ?? "8");
 
+/**
+ * Output cap for the OpenAI-format content call (run-openrouter.ts). MUST be set explicitly:
+ * OpenRouter PRE-AUTHORIZES credits against `max_tokens`, and when the field is omitted it
+ * assumes the model's maximum output (64_000 for claude-haiku-4.5). A judge verdict is a few
+ * hundred tokens of JSON, but the omitted cap made every judge call demand a 64k-token credit
+ * reservation — which failed with `402 … you requested up to 64000 tokens, but can only afford
+ * 51849` on a key with a modest balance. 8k comfortably fits the longest artifact report we
+ * produce (the 5-section dependency-checker one) and cuts the reservation ~8x.
+ */
+export const EVAL_MAX_TOKENS = Number(process.env.EVAL_MAX_TOKENS ?? "8192");
+
 // --- Configuration tag ------------------------------------------------------
 // "candidate" = artifact injected (normal). "baseline" = no artifact (benchmark lift baseline).
 export const EVAL_CONFIG = process.env.EVAL_CONFIG ?? "candidate";

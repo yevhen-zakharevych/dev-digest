@@ -37,6 +37,11 @@ export async function llmJudge(output: string, practices: string[], model = EVAL
   const listed = practices.map((p, i) => `${i + 1}. ${p}`).join("\n");
   const prompt = `${JUDGE_RUBRIC}\n\n## PRACTICES\n${listed}\n\n## OUTPUT\n${output}\n\nReturn the JSON now.`;
   const res = await runContent(prompt, { allowedTools: [], maxTurns: 1, model });
+  // The runners swallow a transport failure into `text` + isError, so an HTTP 402/403/429 from the
+  // provider would otherwise reach parseVerdict as a "response" and be reported as
+  // `judge returned no JSON: 402 …` — an INFRA failure wearing a bad-answer costume, the same
+  // disease as the dead-session bug in INSIGHTS.md. Name it for what it is before parsing.
+  if (res.isError) throw new Error(`judge call FAILED (infra, not a verdict) on ${model}: ${res.text.slice(0, 300)}`);
   const judged = parseVerdict(res.text);
   // The judge ECHOES the practice text back, and it paraphrases — one dropped word ("… / is a pure
   // local rename" → "… / a pure local rename") is enough to make `aggregate()`, which keys practice

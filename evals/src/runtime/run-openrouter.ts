@@ -12,7 +12,7 @@
  */
 
 import OpenAI from "openai";
-import { EVAL_MODEL } from "../config.js";
+import { EVAL_MODEL, EVAL_MAX_TOKENS } from "../config.js";
 import type { Result, RunOptions } from "./run-claude.js";
 
 const BASE_URL = (process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1").replace(/\/$/, "");
@@ -39,6 +39,10 @@ export async function runOpenRouter(prompt: string, opts: RunOptions = {}): Prom
     const res = await client.chat.completions.create({
       model: opts.model ?? EVAL_MODEL,
       temperature: 0,
+      // Explicit, and load-bearing: OpenRouter reserves credits against max_tokens, and omitting
+      // it means "the model's maximum" (64k on haiku-4.5) — a reservation the key cannot afford.
+      // See EVAL_MAX_TOKENS in config.ts.
+      max_tokens: EVAL_MAX_TOKENS,
       messages: [
         { role: "system", content: system },
         { role: "user", content: prompt },
