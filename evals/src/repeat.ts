@@ -16,7 +16,7 @@ import { GREEN, RED, DIM, RESET, rateColor } from "./ansi.js";
 import { gitInfo } from "./git.js";
 import { countTests, runVitestOnce } from "./run-vitest.js";
 import { RESULTS_DIR } from "./artifacts/paths.js";
-import { aggregate, loadRecords, recordCount, type NodeAggregate, type Stats } from "./records/stats.js";
+import { aggregate, loadRecords, recordCount, type EvalRecord, type NodeAggregate, type Stats } from "./records/stats.js";
 
 /**
  * vitest treats a path pattern as a SUBSTRING filter, so a bare `agents/architecture-reviewer`
@@ -56,6 +56,9 @@ const statLine = (label: string, s: Stats) =>
 function printTest(agg: NodeAggregate, times: number): void {
   const shortId = agg.nodeid.split(" > ").slice(-1)[0];
   console.log(`\n  ${rateColor(agg.pass.rate)}${agg.pass.passed}/${agg.pass.total} ${pct(agg.pass.rate)}${RESET}  ${shortId}`);
+  if (agg.errors) {
+    console.log(`      ${RED}⚠ ${agg.errors}/${agg.errors + agg.pass.total} run(s) errored${RESET} ${DIM}(dead session — excluded from every rate below)${RESET}`);
+  }
   const practices = Object.entries(agg.practices);
   if (practices.length) {
     for (const [text, s] of practices) {
@@ -70,10 +73,11 @@ function printTest(agg: NodeAggregate, times: number): void {
 
 async function main(): Promise<void> {
   const argv = process.argv.slice(2);
-  // Cap runs at 2 to keep token spend bounded — LLM sessions are expensive, and 2 runs is enough
-  // to catch a blatantly flaky case. Bump MAX_TIMES if you deliberately want a fuller stability run.
-  const MAX_TIMES = 2;
-  let times = MAX_TIMES;
+  // Cap runs to keep token spend bounded — LLM sessions are expensive. n=2 is NOT a measurement
+  // (one dead or unlucky run swings a rate by 50pp); 5 is the floor at which a per-practice rate
+  // starts to mean something, so that is the cap. Default stays 2 for a quick smoke pass.
+  const MAX_TIMES = 5;
+  let times = 2;
   let label: string | undefined;
   const vitestArgs: string[] = [];
   for (let i = 0; i < argv.length; i++) {
@@ -83,7 +87,7 @@ async function main(): Promise<void> {
     else vitestArgs.push(a);
   }
   if (vitestArgs.length === 0 || !Number.isFinite(times) || times < 1) {
-    console.error("usage: pnpm eval:repeat <vitest pattern> [-n times<=2] [-t testNamePattern] [--label name]");
+    console.error("usage: pnpm eval:repeat <vitest pattern> [-n times<=5] [-t testNamePattern] [--label name]");
     process.exit(1);
   }
   if (times > MAX_TIMES) {
@@ -92,14 +96,21 @@ async function main(): Promise<void> {
   }
   vitestArgs.splice(0, vitestArgs.length, ...resolveEvalPatterns(vitestArgs));
 
+  // Tag every record this series writes. results/records.jsonl is ONE append-only file shared by
+  // every eval process, so a concurrent `eval:repeat` (or a stray `vitest run` in another terminal)
+  // interleaves its rows with ours — and slicing by line number would then hand us its records too.
+  // Filter by the tag, not by position.
+  const series = `${label ?? "repeat"}-${process.pid}-${Date.now().toString(36)}`;
+  const mine = (rs: EvalRecord[]) => rs.filter((r) => r.series === series);
+
   const startLine = recordCount();
   let line = startLine;
   const nCases = countTests(vitestArgs);
   console.log(`\nRepeat: ${vitestArgs.join(" ")}`);
   console.log(`  ${nCases ?? "?"} test case(s) × ${times} runs  (full traces in results/outputs/)\n`);
   for (let i = 1; i <= times; i++) {
-    const captured = await runVitestOnce(`run ${i}/${times}`, vitestArgs);
-    const fresh = loadRecords(line);
+    const captured = await runVitestOnce(`run ${i}/${times}`, vitestArgs, { EVAL_SERIES: series });
+    const fresh = mine(loadRecords(line));
     line = recordCount();
     if (fresh.length === 0) {
       console.log(`  run ${i}/${times}  ${RED}no records — run crashed${RESET}`);
@@ -107,11 +118,13 @@ async function main(): Promise<void> {
       continue;
     }
     const passed = fresh.filter((r) => r.outcome).length;
+    const errored = fresh.filter((r) => r.session_error).length;
     const mark = passed === fresh.length ? `${GREEN}✓${RESET}` : `${RED}✗${RESET}`;
-    console.log(`  run ${i}/${times}  ${mark} ${passed}/${fresh.length} cases`);
+    const errNote = errored ? ` ${RED}(${errored} dead session${errored > 1 ? "s" : ""})${RESET}` : "";
+    console.log(`  run ${i}/${times}  ${mark} ${passed}/${fresh.length} cases${errNote}`);
   }
 
-  const records = loadRecords(startLine);
+  const records = mine(loadRecords(startLine));
   const tests = aggregate(records);
   const nodeids = Object.keys(tests).sort();
 

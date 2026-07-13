@@ -32,6 +32,21 @@ function load(label: string): RepeatFile {
   return JSON.parse(readFileSync(file, "utf8"));
 }
 
+/**
+ * Re-key an aggregate by the test NAME, dropping the file path.
+ *
+ * A cross-artifact A/B (strict vs lite agent) lives in TWO eval files that import the SAME cases
+ * array, so `nodeid` (= `<testPath> > <testName>`) never matches across the pair: every case would
+ * render twice, once as A-only and once as B-only, with every Δ reported as `n/a`. The case name
+ * is the only key both sides share. Two cases with the same name in different files of one series
+ * would collide — that is already ambiguous for a delta, and the last one wins.
+ */
+function byName(tests: Record<string, NodeAggregate>): Record<string, NodeAggregate> {
+  const out: Record<string, NodeAggregate> = {};
+  for (const [id, agg] of Object.entries(tests)) out[id.split(" > ").slice(-1)[0]] = agg;
+  return out;
+}
+
 const rate = (s?: Series) => (s ? Math.round(s.rate * 100) : null);
 const fmtRate = (p: number | null) => (p === null ? "  —" : `${p}`.padStart(3));
 
@@ -63,12 +78,17 @@ function main(): void {
   console.log(`A = ${labelA}  sha ${a.git_sha}${a.dirty ? "-dirty" : ""}  (${a.times} runs)`);
   console.log(`B = ${labelB}  sha ${b.git_sha}${b.dirty ? "-dirty" : ""}  (${b.times} runs)`);
 
-  const nodeids = [...new Set([...Object.keys(a.tests), ...Object.keys(b.tests)])].sort();
-  for (const id of nodeids) {
-    const ta = a.tests[id];
-    const tb = b.tests[id];
-    const shortId = id.split(" > ").slice(-1)[0];
-    rateRow("\n  ", shortId, ta?.pass, tb?.pass);
+  const testsA = byName(a.tests);
+  const testsB = byName(b.tests);
+  const names = [...new Set([...Object.keys(testsA), ...Object.keys(testsB)])].sort();
+  for (const name of names) {
+    const ta = testsA[name];
+    const tb = testsB[name];
+    rateRow("\n  ", name, ta?.pass, tb?.pass);
+    const errs = (ta?.errors ?? 0) + (tb?.errors ?? 0);
+    if (errs) {
+      console.log(`      ${RED}⚠ dead sessions excluded: A=${ta?.errors ?? 0} B=${tb?.errors ?? 0}${RESET}`);
+    }
 
     const practiceTexts = [...new Set([...Object.keys(ta?.practices ?? {}), ...Object.keys(tb?.practices ?? {})])];
     for (const text of practiceTexts) {

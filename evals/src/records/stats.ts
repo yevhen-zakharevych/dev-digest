@@ -42,6 +42,8 @@ export interface EvalRecord {
   git_sha: string;
   dirty: boolean;
   config: string;
+  /** The `eval:repeat` series that produced this row — see record.ts. Absent on a bare vitest run. */
+  series?: string;
   nodeid: string;
   label: string;
   outcome: boolean;
@@ -49,6 +51,8 @@ export interface EvalRecord {
   threshold?: number;
   practices: PracticeVerdict[];
   grounded?: number;
+  /** The SDK session failed (max-turns / API error) — an invalid sample, not a bad answer. */
+  session_error?: boolean;
   num_turns: number;
   metrics: { durationMs: number; inputTokens: number; outputTokens: number; toolCallCount: number };
   trace: { tools: string[]; subagents: string[]; skills: string[]; reads: string[] };
@@ -85,6 +89,8 @@ export interface NodeAggregate {
   pass: Series;
   /** Per practice text → pass series across the runs. Empty for workflow (no judge). */
   practices: Record<string, Series>;
+  /** Runs whose SDK session failed — excluded from `pass`, `practices` and `metrics`. */
+  errors: number;
   metrics: {
     durationMs: Stats;
     inputTokens: Stats;
@@ -94,7 +100,14 @@ export interface NodeAggregate {
   };
 }
 
-/** Aggregate a flat record list into per-nodeid stats. Pass a single config's records. */
+/**
+ * Aggregate a flat record list into per-nodeid stats. Pass a single config's records.
+ *
+ * Rows with `session_error` are INVALID SAMPLES (max-turns, API error) — a dead session's partial
+ * transcript says nothing about the artifact under test, so it is excluded from every rate and
+ * counted in `errors` instead. Averaging it in is how one crashed run once made an agent look
+ * 50pp worse than its deliberately-weakened twin.
+ */
 export function aggregate(records: EvalRecord[]): Record<string, NodeAggregate> {
   const byNode = new Map<string, EvalRecord[]>();
   for (const r of records) {
@@ -104,7 +117,9 @@ export function aggregate(records: EvalRecord[]): Record<string, NodeAggregate> 
   }
 
   const out: Record<string, NodeAggregate> = {};
-  for (const [nodeid, rows] of byNode) {
+  for (const [nodeid, allRows] of byNode) {
+    const errors = allRows.filter((r) => r.session_error).length;
+    const rows = allRows.filter((r) => !r.session_error);
     const passed = rows.filter((r) => r.outcome).length;
 
     // Per-practice: count only rows where that practice was actually judged.
@@ -121,9 +136,10 @@ export function aggregate(records: EvalRecord[]): Record<string, NodeAggregate> 
 
     out[nodeid] = {
       nodeid,
-      label: rows[rows.length - 1].label,
+      label: allRows[allRows.length - 1].label,
       pass: series(passed, rows.length),
       practices,
+      errors,
       metrics: {
         durationMs: calcStats(rows.map((r) => r.metrics?.durationMs ?? 0)),
         inputTokens: calcStats(rows.map((r) => r.metrics?.inputTokens ?? 0)),

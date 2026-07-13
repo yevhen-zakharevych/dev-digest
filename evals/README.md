@@ -186,62 +186,60 @@ workflow cases:
 > checkout is disposable); locally, prefer the Anthropic path or a throwaway clone for the workflow
 > tier.
 
-### Wiring it into GitHub Actions (per-PR)
+### On GitHub Actions (per-PR) — `.github/workflows/evals.yml`
 
-The engine is CI-ready: bring the proxy up as a step, wait for it, run the tier, tear it down. Put
-the OpenRouter key in the repo's **Actions secrets** as `OPENROUTER_API_KEY` (Settings → Secrets and
-variables → Actions). Create `.github/workflows/<name>.yml` in your repo:
+**This repo already ships the workflow.** It runs on every PR and picks the suites from the diff,
+so a PR that touches one skill pays for one skill:
 
-```yaml
-name: evals
-on:
-  pull_request:
-    paths: ['evals/**', '.claude/**', 'CLAUDE.md']   # only when the harness/artifacts change
+| Changed in the PR | What runs |
+|---|---|
+| `.claude/skills/<n>/**` or `evals/skills/<n>/**` | that skill's evals (content tier) |
+| `.claude/agents/<n>.md` or `evals/agents/<n>/**` | that agent's evals **+** the workflow tier |
+| `CLAUDE.md` or `evals/src/**` | the workflow tier |
+| anything else | only the free static gate |
 
-permissions:
-  contents: read
+The mapping is **not** written in the YAML — it lives in [`scripts/ci-detect.mjs`](scripts/ci-detect.mjs),
+which also reports a changed artifact that has **no** evals as a visible SKIP in the job summary
+rather than a failure. Test it locally without pushing:
 
-jobs:
-  workflow-evals:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: evals
-    env:
-      EVAL_BACKEND: openrouter
-      OPENROUTER_BASE_URL: http://localhost:4000
-      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}   # repo Actions secret
-      EVAL_MODEL: google/gemini-2.5-flash
-      EVAL_JUDGE_MODEL: google/gemini-2.5-flash
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with: { version: 10 }
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-          cache-dependency-path: evals/pnpm-lock.yaml
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm typecheck
-
-      # --- the engine ---
-      - run: docker compose -f proxy/docker-compose.yml up -d   # OPENROUTER_API_KEY from job env
-      - run: pnpm proxy:wait                                     # block until the proxy answers
-      - run: pnpm eval:workflow                                  # or eval:agents / eval:skills / eval
-      - if: failure()
-        run: docker compose -f proxy/docker-compose.yml logs --tail 100
-      - if: always()
-        run: docker compose -f proxy/docker-compose.yml down
+```bash
+CHANGED_FILES='.claude/agents/architecture-reviewer.md' node scripts/ci-detect.mjs
+# → skills=[]  agents=["architecture-reviewer"]  run_workflow=true
 ```
 
-Notes:
-- ubuntu runners ship Docker + `docker compose`, so no extra setup is needed.
-- The proxy container reads `OPENROUTER_API_KEY` straight from the job `env` (which is fed by the
-  secret) — you don't pass it to `docker compose` explicitly.
-- Because tool tiers cost real tokens, gate on `paths:` (only when the harness/artifacts change) and
-  keep the case count small. For a stricter gate, split into a required `eval:agents`/`eval:skills`
-  job and a non-blocking `eval:workflow` job (activation flakiness, above).
+**Setup:** add the repo Actions secret `OPENROUTER_API_KEY` (Settings → Secrets and variables →
+Actions). That is the only required step. **No Docker, no proxy** — see below.
+
+**Models are a job-level knob**, one per tier, overridable per manual run via `workflow_dispatch`:
+
+| Tier | Model | Why |
+|---|---|---|
+| `skills` | `deepseek/deepseek-chat` | the content tier has **no tools at all** — cheapest capable writer wins |
+| `agents`, `workflow` | `anthropic/claude-haiku-4.5` | these run **inside the Claude Agent SDK** and assert on the trace (tool use, subagent dispatch, Skill activation). The cheap OSS models are too noisy here — deepseek/gpt-4.1-mini do the work *inline* instead of dispatching. Haiku is also the family every case's `maxTurns` was calibrated against. |
+
+**Why there is no LiteLLM proxy in CI.** The proxy exists solely to let a **non-Anthropic** model
+speak the Agent SDK's Anthropic wire protocol. `anthropic/*` slugs are served natively by
+OpenRouter's Anthropic skin, so with Haiku on the tool tiers there is nothing to translate. The
+trick is to leave `OPENROUTER_BASE_URL` **unset**, which lets both readers fall back to their own
+correct defaults — `env.ts` points the SDK at `https://openrouter.ai/api` (the skin) and
+`run-openrouter.ts` points the judge at `https://openrouter.ai/api/v1` (OpenAI format). Swap
+`tool_model` back to a non-Anthropic slug and you **must** bring the proxy back and set
+`OPENROUTER_BASE_URL` — it is still bundled for local use (`pnpm proxy:up`).
+
+**Jobs.** `static` (typecheck + `eval:quality` — no model, free), `skills` and `agents` are meant to
+be **blocking**; `workflow` is **non-blocking** (`continue-on-error`), because its `activation` cases
+assert the model invokes the `Skill` *tool* and a capable model may do the right thing without that
+tool call (see the caveats above). Forked PRs are skipped: GitHub withholds secrets from them, so
+every model job would die on a missing key.
+
+Two traps the workflow is written against, worth knowing if you adapt it:
+
+- **No `paths:` filter on `on:`.** A required check with a `paths:` filter leaves every non-matching
+  PR stuck on "Expected" forever. The filtering is done by the `changes` job + per-job `if:` instead —
+  a *skipped* job counts as success for branch protection.
+- **The vitest filter needs a trailing slash.** `vitest run agents/architecture-reviewer` is a
+  *substring* match and also selects `agents/architecture-reviewer-lite/` — 10 tests instead of 5,
+  i.e. double the bill, silently.
 
 ## Module layout — `src/` (the engine)
 

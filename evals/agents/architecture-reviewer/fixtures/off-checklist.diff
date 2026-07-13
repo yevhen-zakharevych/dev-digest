@@ -1,0 +1,42 @@
+diff --git a/client/src/components/diff-viewer/ReviewSummary.tsx b/client/src/components/diff-viewer/ReviewSummary.tsx
+new file mode 100644
+index 0000000..7777777
+--- /dev/null
++++ b/client/src/components/diff-viewer/ReviewSummary.tsx
+@@ -0,0 +1,32 @@
++'use client';
++
++import { useEffect, useState } from 'react';
++import type { Finding } from '@devdigest/shared';
++
++export function ReviewSummary({ reviewId }: { reviewId: string }) {
++  const [findings, setFindings] = useState<Finding[]>([]);
++  const [loading, setLoading] = useState(true);
++
++  useEffect(() => {
++    let cancelled = false;
++
++    fetch(`http://localhost:3001/api/reviews/${reviewId}/findings`)
++      .then((res) => res.json())
++      .then((data) => {
++        if (!cancelled) {
++          setFindings(data.findings);
++          setLoading(false);
++        }
++      });
++
++    return () => {
++      cancelled = true;
++    };
++  }, [reviewId]);
++
++  if (loading) return <p>Loading…</p>;
++
++  return (
++    <ul>
++      {findings.map((f) => (
++        <li key={f.id}>{f.title}</li>
++      ))}
++    </ul>
++  );
++}

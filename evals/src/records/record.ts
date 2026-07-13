@@ -64,6 +64,11 @@ export function record(label: string, data: RecordData): void {
     git_sha: GIT_SHA,
     dirty: DIRTY,
     config: EVAL_CONFIG,
+    // Which `eval:repeat` series this row belongs to. records.jsonl is a single append-only file,
+    // so two repeat processes running at once interleave their rows; slicing by line count then
+    // makes each sweep up the other's records (seen: a 4-case run reporting "4/7 cases" and a lite
+    // summary printing the strict agent's tests). The series tag is the only safe filter.
+    series: process.env.EVAL_SERIES,
     nodeid,
     label,
     outcome,
@@ -71,6 +76,9 @@ export function record(label: string, data: RecordData): void {
     threshold,
     practices: verdict?.results ?? [],
     grounded,
+    // The session itself failed (max-turns / SDK error) — the row is an INVALID sample, not a bad
+    // report. Aggregators exclude it from pass and practice rates and count it separately.
+    session_error: result.isError,
     num_turns: result.numTurns,
     metrics: result.metrics,
     trace: {

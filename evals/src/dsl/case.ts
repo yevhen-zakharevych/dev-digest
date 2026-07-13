@@ -92,16 +92,30 @@ function runQualityCases(artifact: string, cases: QualityCase[], task: Task): vo
       let grounded: number | undefined;
       let verdict: Verdict | undefined;
       try {
-        // Cheap deterministic tier first — the grounding gate. When it fails the judge is skipped.
-        if (c.grounding?.length) grounded = patternMatch(result.text, c.grounding);
-        if (c.practices?.length && (grounded === undefined || grounded === 1)) {
-          verdict = await llmJudge(result.text, c.practices);
-          logVerdict(c.name, verdict);
+        // A session that died (max-turns, SDK/API error) never emitted its final answer — its
+        // `text` is the leftover interstitial narration. Judging that scores the HARNESS, not the
+        // artifact, and silently reads as "the agent wrote a bad report" (it poisoned an A/B once:
+        // one dead run put the strict reviewer 50pp below its own twin). Skip the judge; the
+        // assert below fails the case distinctly and `session_error` marks the record so the
+        // aggregators can exclude it instead of averaging it in.
+        if (!result.isError) {
+          // Cheap deterministic tier first — the grounding gate. When it fails the judge is skipped.
+          if (c.grounding?.length) grounded = patternMatch(result.text, c.grounding);
+          if (c.practices?.length && (grounded === undefined || grounded === 1)) {
+            verdict = await llmJudge(result.text, c.practices);
+            logVerdict(c.name, verdict);
+          }
         }
       } finally {
         record(c.name, { result, verdict, grounded, threshold });
       }
 
+      expect(
+        result.isError,
+        `session did not complete (max-turns or SDK error) — not judged.\n` +
+          `turns=${result.numTurns} tools=${result.metrics.toolCallCount}\n` +
+          `partial output:\n${result.text.slice(0, 800)}`,
+      ).toBe(false);
       if (grounded !== undefined) {
         expect(grounded, `missing concrete evidence; output:\n${result.text}`).toBe(1);
       }
@@ -135,6 +149,14 @@ export function runWorkflowCases(cases: WorkflowCase[]): void {
         const result = await workflowTask(c.prompt, { maxTurns: c.maxTurns });
         logTrace(c.name, result);
         try {
+          // A session that died (max-turns / SDK error) never reached the point where it WOULD have
+          // invoked the skill — so "no skill invoked" proves nothing, and a `shouldActivate: false`
+          // case would score a free pass on a corpse. Fail the run instead of trusting its silence.
+          expect(
+            result.isError,
+            `session did not complete (max-turns or SDK error) — activation is unproven.\n` +
+              `turns=${result.numTurns} tools=${result.metrics.toolCallCount}`,
+          ).toBe(false);
           expect(
             activated(result, c.skill),
             `skills: ${result.skillsInvoked.join(", ")} | reads: ${result.filesRead.join(", ")}`,

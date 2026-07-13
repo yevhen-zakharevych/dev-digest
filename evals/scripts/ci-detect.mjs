@@ -34,12 +34,19 @@ function hasEvals(tier, name) {
   return readdirSync(dir).some((f) => f.endsWith(".eval.ts"));
 }
 
+// `.claude/agents/README.md` is the hand-maintained CATALOG, not an agent: it matches the
+// `<name>.md` shape but no agent is named "README", it is loaded by nobody, and left unfiltered it
+// would (a) show up as `skipped_agents=README` on every catalog edit and (b) trigger the whole
+// workflow tier. Same for a stray `.claude/skills/README.md`, which the skills regex already
+// misses (it needs a directory), but exclude it by name so the two rules read alike.
+const NOT_AN_ARTIFACT = /^(README|AGENTS|CLAUDE)$/i;
+
 /** Collect distinct artifact names touched under a `.claude` and/or `evals` prefix. */
 function touched(reClaude, reEvals) {
   const names = new Set();
   for (const f of changed) {
     const m = f.match(reClaude) ?? f.match(reEvals);
-    if (m) names.add(m[1]);
+    if (m && !NOT_AN_ARTIFACT.test(m[1])) names.add(m[1]);
   }
   return [...names].sort();
 }
@@ -58,13 +65,20 @@ const skippedSkills = skillNames.filter((n) => !hasEvals("skills", n));
 const agents = agentNames.filter((n) => hasEvals("agents", n));
 const skippedAgents = agentNames.filter((n) => !hasEvals("agents", n));
 
-// The workflow tier measures the LIVE harness, so anything that changes it re-triggers it:
-// the root or .claude CLAUDE.md, any agent definition, the workflow cases, or the engine itself.
+// The workflow tier measures the LIVE harness, so only a change to the HARNESS re-triggers it:
+// the root or .claude CLAUDE.md, a real agent DEFINITION under `.claude/agents/` (not the catalog
+// README, and NOT an `evals/agents/**` case or fixture — those change the eval, not the harness),
+// the workflow cases, or the engine itself.
+const isAgentDefinition = (f) => {
+  const m = f.match(/^\.claude\/agents\/([^/]+)\.md$/);
+  return Boolean(m) && !NOT_AN_ARTIFACT.test(m[1]);
+};
+
 const runWorkflow = changed.some(
   (f) =>
     f === "CLAUDE.md" ||
     f === ".claude/CLAUDE.md" ||
-    /^\.claude\/agents\/.+\.md$/.test(f) ||
+    isAgentDefinition(f) ||
     /^evals\/workflow\//.test(f) ||
     /^evals\/src\//.test(f),
 );
