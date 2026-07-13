@@ -1,21 +1,7 @@
 import { fixtureReader, type AgentCase } from "../../src/index.js";
 
 /**
- * Cases for the `architecture-reviewer` subagent — and, unchanged, for its deliberately weakened
- * twin `architecture-reviewer-lite`. Both eval files import THIS array, so the two runs differ in
- * exactly one variable: the agent artifact injected as the system prompt. That is what makes the
- * pair a controlled A/B instead of two unrelated suites (`pnpm eval:delta strict lite`).
- *
- * The lite variant has two rules cut from `.claude/agents/architecture-reviewer.md`:
- *   1. "Falsifiability" — cite the violated principle BY NAME in every finding.
- *   2. "Explicitly out of scope — never flag" — the style/correctness/security/perf carve-out.
- * Each cut has cases below that measure it, so the delta report should light up two practice rows
- * and leave the rest flat:
- *   cut 1 → the "names the violated principle" practices in `layering` and `reviewer-core-gate`
- *   cut 2 → the two scope practices in `scope-bait`
- * `benign-refactor` is the control: neither cut touches "empty is a valid result", so a big drop
- * there would mean a weakened prompt also got NOISIER — worth knowing, and not something either
- * cut predicts.
+ * Cases for the `architecture-reviewer` subagent.
  *
  * Practice wording follows the three llmJudge rules learned in INSIGHTS.md:186 — one practice =
  * one assertion; every practice answerable from its own prompt; a negative practice always gets a
@@ -105,10 +91,10 @@ export const cases: AgentCase[] = [
       "flags the hand-rolled `ConventionCandidate` interface as contract duplication — it re-declares an existing `@devdigest/shared` Zod contract instead of importing the schema-derived type",
       "frames the direct `process.env.GITHUB_TOKEN` read as an architectural boundary violation — secrets belong behind the injected SecretsProvider / the composition root — rather than as a security vulnerability",
       // NOTE: a fourth practice used to sit here — "explicitly SAYS the bait is out of scope".
-      // Deleted, not weakened: it scored 33% on BOTH variants (Δ 0), because the strict prompt never
-      // requires that declaration — it says "never flag", not "declare what you skipped". The
-      // practice was testing the eval author's wish rather than the artifact's contract, and a
-      // practice neither variant can satisfy measures nothing but its own wording.
+      // Deleted, not weakened: it scored 33% regardless of prompt strictness, because the prompt
+      // never requires that declaration — it says "never flag", not "declare what you skipped".
+      // The practice was testing the eval author's wish rather than the artifact's contract, and a
+      // practice the artifact can't satisfy measures nothing but its own wording.
       "the numbered FINDINGS list holds structural findings only — quote the finding headlines as evidence; if any numbered finding's subject is the off-by-one bug, the variable naming, or the dedup scan's performance, this practice FAILS",
     ],
     // Unchanged at 0.75, but with three practices that now means all three — 2/3 = 0.67 is below the
