@@ -1,6 +1,13 @@
 import type { EvalExpectation, EvalExpectedItem, EvalForbiddenRegion, FindingKind } from '@devdigest/shared';
 import { parseUnifiedDiff } from '../../adapters/git/diff-parser.js';
-import { buildLineIndex, FULL_FILE_KINDS } from '@devdigest/reviewer-core';
+// Import from the grounding SUBPATH, not the `@devdigest/reviewer-core` barrel,
+// on purpose: the barrel eagerly re-exports the LLM providers (`llm/structured`,
+// `llm/openrouter`), which `import 'openai'` at module load. This file is pure and
+// is pulled by `db/seed.ts`, which runs in CI BEFORE reviewer-core's deps are
+// installed — importing the barrel there crashes with `Cannot find package 'openai'`.
+// `grounding.ts` imports only shared types, so the subpath keeps this layer free of
+// the LLM stack. Do NOT "tidy" this back to the barrel (that regression cost a CI run).
+import { buildLineIndex, FULL_FILE_KINDS } from '@devdigest/reviewer-core/grounding.js';
 
 /**
  * Diff-freeze integrity (AC-7).

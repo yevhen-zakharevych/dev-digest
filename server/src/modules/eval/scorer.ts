@@ -6,7 +6,9 @@ import type {
   Finding,
   FindingKind,
 } from '@devdigest/shared';
-import { FULL_FILE_KINDS } from '@devdigest/reviewer-core';
+// Subpath, not the barrel — the barrel eagerly loads the LLM providers (which
+// `import 'openai'`), and this scorer is pure. See the note in `diff-freeze.ts`.
+import { FULL_FILE_KINDS } from '@devdigest/reviewer-core/grounding.js';
 
 /**
  * Scoring — mechanical, no model call anywhere in this file (AC-23).
