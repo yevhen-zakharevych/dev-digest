@@ -1,0 +1,290 @@
+# Harness evals — runs the DevDigest Claude Code evals on OpenRouter, per-PR, selectively.
+#
+# On a pull request we diff against the base branch and run ONLY the suites the change touches:
+#   • a changed skill      → that skill's evals        (content tier)
+#   • a changed agent      → that agent's evals + the workflow tier
+#   • a changed CLAUDE.md  → the workflow tier
+#   • an engine change     → the workflow tier
+# A changed artifact with no written evals is reported as SKIP, not a failure. The mapping is NOT
+# duplicated here — it lives in evals/scripts/ci-detect.mjs.
+#
+# MODELS are a job-level knob (not surfaced in any UI):
+#   skills (content tier)      → anthropic/claude-haiku-4.5    was deepseek/deepseek-chat until CI
+#     measured it on 2026-07-13: DeepSeek reproduced the skill's report TEMPLATE while dropping the
+#     question the prompt asked, and as a judge emitted invalid JSON. It also graded a pairing that
+#     does not exist — a .claude/ skill is invoked by Claude Code, i.e. by a Claude model. Evaluate
+#     an artifact on the family that actually runs it. See the job for the full note.
+#   agents + workflow (tool)   → anthropic/claude-haiku-4.5    these run INSIDE the Claude Agent SDK
+#     and assert on the trace (tool use, subagent dispatch, Skill activation). The cheap OSS models
+#     are too noisy there — deepseek/gpt-4.1-mini do the work INLINE instead of dispatching a
+#     subagent, so the tier would go red for a reason unrelated to the artifact under test.
+#     Haiku is also the family every case's `maxTurns` was calibrated against, so turn budgets hold.
+#
+# NO LiteLLM PROXY. The proxy (evals/proxy/) exists solely to let a NON-Anthropic model speak the
+# Agent SDK's Anthropic wire protocol. `anthropic/*` slugs are served natively by OpenRouter's
+# Anthropic skin, so with Haiku on the tool tiers there is nothing to translate. Leaving
+# OPENROUTER_BASE_URL unset is what makes this work: env.ts then points the SDK at
+# https://openrouter.ai/api (the skin) and run-openrouter.ts points the judge at
+# https://openrouter.ai/api/v1 (OpenAI format) — both correct, no Docker in CI. If you ever switch
+# tool_model back to a non-Anthropic slug, you MUST bring the proxy back and set OPENROUTER_BASE_URL.
+#
+# Requires the repo Actions secret OPENROUTER_API_KEY.
+
+name: evals
+
+# MANUAL ONLY. This workflow does NOT run on `pull_request` — it is triggered by hand from the
+# Actions tab (or `gh workflow run evals.yml`). Reason: the model tiers call OpenRouter on a shared
+# key with a WEEKLY budget, so a per-PR trigger burns that budget and the job then goes red on
+# `403 Key limit exceeded` — an infra failure unrelated to the artifact under test.
+#
+# On manual dispatch there is no PR to diff against, so the `changes` job falls back to "everything
+# changed" (diff from the root commit) and runs every suite — see the BASE_SHA fallback below.
+#
+# IF YOU RE-ENABLE `pull_request:` — these jobs were designed to be REQUIRED checks, so keep the
+# deliberate absence of a `paths:` filter: a required check with a paths filter leaves every
+# non-matching PR stuck on "Expected" forever. Gating is done in the `changes` job + per-job `if:`
+# instead (a *skipped* job counts as SUCCESS for branch protection). And a required check with NO
+# trigger has the same wedge — so making this manual-only is only safe while `evals` is NOT a
+# required status check (verified 2026-07-16: `main` is unprotected, no required checks).
+on:
+  workflow_dispatch:
+    inputs:
+      skills_model:
+        description: 'OpenRouter slug for the skills (content) tier'
+        default: 'anthropic/claude-haiku-4.5'
+      tool_model:
+        description: 'OpenRouter slug for the agents + workflow (tool) tiers'
+        default: 'anthropic/claude-haiku-4.5'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: evals-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── 1. Detect which suites this PR should run ──────────────────────────────
+  # Forked PRs get no secrets, so OPENROUTER_API_KEY would be empty and every model job would die
+  # on a missing key. Skip the whole workflow for them.
+  changes:
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    outputs:
+      skills: ${{ steps.detect.outputs.skills }}
+      agents: ${{ steps.detect.outputs.agents }}
+      run_workflow: ${{ steps.detect.outputs.run_workflow }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - id: detect
+        working-directory: evals
+        env:
+          # workflow_dispatch has no diff — fall back to "everything changed" by diffing the root commit.
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ -n "$BASE_SHA" ]; then
+            RANGE="$BASE_SHA...HEAD"
+          else
+            RANGE="$(git rev-list --max-parents=0 HEAD | tail -1)...HEAD"
+          fi
+          CHANGED_FILES="$(git diff --name-only "$RANGE")"
+          export CHANGED_FILES
+          node scripts/ci-detect.mjs
+
+      # A changed artifact with no evals must be VISIBLE, or "no evals" and "evals passed" look
+      # identical from the PR page. Names go through env, never `${{ }}` in the script body — they
+      # are diff-derived, so interpolating them would be a command-injection seam.
+      - name: Report artifacts with no evals
+        if: steps.detect.outputs.skipped_skills != '' || steps.detect.outputs.skipped_agents != ''
+        env:
+          SKIPPED_SKILLS: ${{ steps.detect.outputs.skipped_skills }}
+          SKIPPED_AGENTS: ${{ steps.detect.outputs.skipped_agents }}
+        run: |
+          {
+            echo "### Changed, but no evals written — SKIPPED"
+            for s in $SKIPPED_SKILLS; do echo "- skill \`$s\`"; done
+            for a in $SKIPPED_AGENTS; do echo "- agent \`$a\`"; done
+            echo ""
+            echo "Scaffold them with \`pnpm eval:scaffold <name>\` in \`evals/\`."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ── 2. Static gate — no model, no network, no cost. Always runs. ───────────
+  static:
+    needs: changes
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: evals
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 10 }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: evals/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm eval:quality # SKILL.md structure/frontmatter/links; WARN does not fail
+
+  # ── 3. Skills — content tier. No tools, plain chat.completions. ────────────
+  skills:
+    needs: changes
+    if: needs.changes.outputs.skills != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        skill: ${{ fromJSON(needs.changes.outputs.skills) }}
+    defaults:
+      run:
+        working-directory: evals
+    env:
+      EVAL_BACKEND: openrouter
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      # Was deepseek/deepseek-chat, on the reasoning "the content tier has no tools, so the cheapest
+      # writer wins". Measured 2026-07-13 in CI, and that reasoning was wrong on both counts:
+      #
+      #  1. It graded a pairing that does not exist. This skill lives in .claude/skills/ and is
+      #     invoked by Claude Code — i.e. by a Claude model. Scoring it on DeepSeek measured a
+      #     configuration production never runs.
+      #  2. DeepSeek failed it for real, twice. On `picks the audit tool per lockfile` it produced a
+      #     well-formed 5-section report that never once said `pnpm audit`, `npm audit` or
+      #     "lockfile": it reproduced the skill's TEMPLATE and dropped the question the prompt
+      #     actually asked. As a JUDGE it emitted invalid JSON (an unescaped verbatim quote), failing
+      #     a second case on syntax rather than on content.
+      #     The same suite is 6/6 green on claude-haiku (INSIGHTS.md).
+      EVAL_MODEL: ${{ inputs.skills_model || 'anthropic/claude-haiku-4.5' }}
+      EVAL_JUDGE_MODEL: ${{ inputs.skills_model || 'anthropic/claude-haiku-4.5' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 10 }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: evals/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+
+      # The trailing slash is load-bearing: vitest's positional filter is a SUBSTRING match, so
+      # `skills/foo` would also select `skills/foo-bar/`. On the agents tier this is not
+      # hypothetical — see the note there.
+      - name: Run skill evals
+        env:
+          SKILL: ${{ matrix.skill }}
+        run: pnpm exec vitest run "skills/$SKILL/"
+
+      - name: Upload eval records
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-records-skill-${{ matrix.skill }}
+          path: |
+            evals/results/records.jsonl
+            evals/results/outputs/**
+          if-no-files-found: ignore
+
+  # ── 4. Agents — tool tier. Agent SDK on Haiku via OpenRouter's Anthropic skin. ──
+  agents:
+    needs: changes
+    if: needs.changes.outputs.agents != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      # Each matrix entry is its own runner, and Haiku via the Anthropic skin handles concurrency
+      # fine — so agents fan out in parallel, no serial wait.
+      matrix:
+        agent: ${{ fromJSON(needs.changes.outputs.agents) }}
+    defaults:
+      run:
+        working-directory: evals
+    env:
+      EVAL_BACKEND: openrouter
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      EVAL_MODEL: ${{ inputs.tool_model || 'anthropic/claude-haiku-4.5' }}
+      EVAL_JUDGE_MODEL: ${{ inputs.tool_model || 'anthropic/claude-haiku-4.5' }}
+      # OPENROUTER_BASE_URL intentionally unset — see the header. Setting it would rebase BOTH the
+      # SDK and the judge onto a proxy that no longer runs here.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 10 }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: evals/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+
+      # Trailing slash — and this bit us for real: vitest's positional filter is a SUBSTRING match,
+      # so while `agents/architecture-reviewer-lite/` existed (an A/B twin, since removed in 62774b1)
+      # the filter `agents/architecture-reviewer` selected BOTH — 10 tests instead of 5, i.e. double
+      # the model bill, with nothing about the run looking wrong. Keep the slash: it costs nothing
+      # and the next artifact whose name is a prefix of another's brings the bug straight back.
+      - name: Run agent evals
+        env:
+          AGENT: ${{ matrix.agent }}
+        run: pnpm exec vitest run "agents/$AGENT/" --no-file-parallelism
+
+      - name: Upload eval records
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-records-agent-${{ matrix.agent }}
+          path: |
+            evals/results/records.jsonl
+            evals/results/outputs/**
+          if-no-files-found: ignore
+
+  # ── 5. Workflow — live-harness tier. Asserts on the TRACE: was a subagent ──
+  #     dispatched, did a skill activate, which docs did CLAUDE.md route us to.
+  #
+  # Non-blocking: the `activation` cases assert the model invokes the Skill TOOL, and a capable
+  # model may do the right thing without that tool call (evals/README.md). Treat as a report.
+  workflow:
+    needs: changes
+    if: needs.changes.outputs.run_workflow == 'true'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    defaults:
+      run:
+        working-directory: evals
+    env:
+      EVAL_BACKEND: openrouter
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      EVAL_MODEL: ${{ inputs.tool_model || 'anthropic/claude-haiku-4.5' }}
+      EVAL_JUDGE_MODEL: ${{ inputs.tool_model || 'anthropic/claude-haiku-4.5' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 10 }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: evals/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+
+      # workflowTask runs with settingSources:["project"] + bypassPermissions against the live
+      # checkout. Safe here (the checkout is disposable) and safe by construction —
+      # WORKFLOW_ALLOWED_TOOLS (src/config.ts) is a read-only allow-list. Never widen it to make a
+      # CI case pass.
+      - name: Run workflow evals
+        run: pnpm exec vitest run workflow --no-file-parallelism
+
+      - name: Upload eval records
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-records-workflow
+          path: |
+            evals/results/records.jsonl
+            evals/results/outputs/**
+          if-no-files-found: ignore

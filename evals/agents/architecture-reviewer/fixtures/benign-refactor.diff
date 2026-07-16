@@ -1,0 +1,19 @@
+diff --git a/reviewer-core/src/review/reduce.ts b/reviewer-core/src/review/reduce.ts
+index eeeeeee..fffffff 100644
+--- a/reviewer-core/src/review/reduce.ts
++++ b/reviewer-core/src/review/reduce.ts
+@@ -18,12 +18,14 @@ export function scoreFromFindings(findings: Finding[]): number {
+-export function summarize(findings: Finding[]): { file: string; count: number }[] {
+-  const m = new Map<string, number>();
+-  for (const f of findings) {
+-    m.set(f.file, (m.get(f.file) ?? 0) + 1);
+-  }
+-  return [...m.entries()].map(([k, v]) => ({ file: k, count: v }));
++export function summarize(findings: Finding[]): { file: string; count: number }[] {
++  // Renamed locals for readability; behaviour unchanged.
++  const countsByFile = new Map<string, number>();
++  for (const finding of findings) {
++    countsByFile.set(finding.file, (countsByFile.get(finding.file) ?? 0) + 1);
++  }
++  return [...countsByFile.entries()].map(([file, count]) => ({ file, count }));
+ }

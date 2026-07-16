@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
     "verify:l03": "vitest run src/modules/pulls/classifier.test.ts",
+    "verify:l06": "vitest run src/modules/eval/scorer.test.ts src/modules/eval/fingerprint.test.ts src/modules/eval/diff-freeze.test.ts src/modules/eval/compare.test.ts src/modules/agents/effective-config.test.ts && vitest run test/eval-pipeline.it.test.ts test/eval-scoring.it.test.ts test/agents-promote-config.it.test.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts",
     "db:seed": "tsx src/db/seed.ts"

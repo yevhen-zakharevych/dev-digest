@@ -4,7 +4,7 @@ Reusable AI skills that provide specialized knowledge and workflows. Canonical l
 
 ## Catalog
 
-Seventeen skills. Keep this table in sync with the directories — nothing validates it,
+Eighteen skills. Keep this table in sync with the directories — nothing validates it,
 so a stale row is invisible until an agent trusts it.
 
 | Skill | Scope | Description |
@@ -18,6 +18,7 @@ so a stale row is invisible until an agent trusts it.
 | [zod](zod/SKILL.md) | Full-stack | Zod schema validation, parsing, error handling, type inference |
 | [typescript-expert](typescript-expert/SKILL.md) | Full-stack | Type-level programming, performance, tooling, migrations |
 | [security](security/SKILL.md) | Full-stack | This repo's real stack: OWASP API Top 10 for `server/`, Web Top 10:2025 for `client/`, plus the `INJECTION_GUARD` defense |
+| [dependency-checker](dependency-checker/SKILL.md) | Architecture | Audits external npm deps + internal path-alias links: Mermaid graph, size breakdown, P0/P1/P2/Info findings, prioritized summary |
 | [onion-architecture](onion-architecture/SKILL.md) | Architecture | Ports & adapters for backend modules: layer rules, DI composition root, repository pattern |
 | [frontend-architecture](frontend-architecture/SKILL.md) | Architecture | Where files live in React + Next.js: feature modules, component splits, module boundaries |
 | [mermaid-diagram](mermaid-diagram/SKILL.md) | Shared | Mermaid diagrams in markdown (flowcharts, sequence, ERD, …) |

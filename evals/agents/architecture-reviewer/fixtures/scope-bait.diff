@@ -1,0 +1,51 @@
+diff --git a/server/src/modules/rules/service.ts b/server/src/modules/rules/service.ts
+index 5555555..6666666 100644
+--- a/server/src/modules/rules/service.ts
++++ b/server/src/modules/rules/service.ts
+@@ -1,4 +1,39 @@
+ import type { Container } from '../../platform/container.js';
+
++// Local shape for a convention rule row.
++export interface ConventionCandidate {
++  id: string;
++  category: string;
++  status: string;
++  rule: string;
++  confidence: number;
++}
++
+ export class RulesService {
+   constructor(private readonly c: Container) {}
+
++  private async fetchFromGithub(repo: string): Promise<unknown> {
++    const token = process.env.GITHUB_TOKEN;
++    const res = await fetch(`https://api.github.com/repos/${repo}/contents/.rules.json`, {
++      headers: { authorization: `Bearer ${token}` },
++    });
++    return res.json();
++  }
++
++  async summarize(repoId: string): Promise<ConventionCandidate[]> {
++    const rows = await this.c.rulesRepo.listByRepo(repoId);
++    const out: ConventionCandidate[] = [];
++
++    for (let i = 0; i <= rows.length; i++) {
++      const d = rows[i];
++      out.push({
++        id: d.id,
++        category: d.category,
++        status: d.status,
++        rule: d.rule,
++        confidence: d.confidence,
++      });
++    }
++
++    // Drop rows the repository returned twice.
++    const unique: ConventionCandidate[] = [];
++    for (const c of out) {
++      if (!unique.some((u) => u.id === c.id)) unique.push(c);
++    }
++
++    return unique;
++  }
+ }

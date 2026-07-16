@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { Finding, FindingKind, Severity, FindingCategory } from './findings.js';
 
 /**
  * Conformance, Onboarding, Eval, Memory, Conventions, Skills,
@@ -97,13 +98,18 @@ export const EvalPerTrace = z.object({
 });
 export type EvalPerTrace = z.infer<typeof EvalPerTrace>;
 
+// `recall` / `precision` / `citation_accuracy` / `duration_ms` are nullable —
+// null when the run produced no scorable case (AC-37); an absent measurement
+// and a measured zero must render distinctly (AC-31/AC-32).
 export const EvalRun = z.object({
-  recall: z.number().min(0).max(1),
-  precision: z.number().min(0).max(1),
-  citation_accuracy: z.number().min(0).max(1),
+  recall: z.number().min(0).max(1).nullable(),
+  precision: z.number().min(0).max(1).nullable(),
+  citation_accuracy: z.number().min(0).max(1).nullable(),
   traces_passed: z.number().int(),
   traces_total: z.number().int(),
-  duration_ms: z.number().int(),
+  /** Cases whose model call failed — excluded from every metric denominator (AC-36/AC-37). */
+  errored_count: z.number().int().default(0),
+  duration_ms: z.number().int().nullable(),
   cost_usd: z.number().nullable(),
   per_trace: z.array(EvalPerTrace),
 });
@@ -112,18 +118,10 @@ export type EvalRun = z.infer<typeof EvalRun>;
 export const EvalOwnerKind = z.enum(['skill', 'agent']);
 export type EvalOwnerKind = z.infer<typeof EvalOwnerKind>;
 
-export const EvalCase = z.object({
-  id: z.string(),
-  owner_kind: EvalOwnerKind,
-  owner_id: z.string(),
-  name: z.string(),
-  input_diff: z.string(),
-  input_files: z.unknown(),
-  input_meta: z.unknown(),
-  expected_output: z.unknown(),
-  notes: z.string().nullish(),
-});
-export type EvalCase = z.infer<typeof EvalCase>;
+// `EvalCase` is defined near the bottom of this file (see "---- Eval — case
+// extensions, effective config, drafts (L06) ----"), after `Provider` /
+// `ReviewStrategy` — `EvalEffectiveConfig`, which `EvalCase.latest_draft`
+// pins on, is a value snapshot over those exact enums.
 
 // ---- Memory ----
 export const MemoryScope = z.enum(['repo', 'global', 'team']);
@@ -361,3 +359,146 @@ export const AgentSkillLink = z.object({
   enabled: z.boolean().default(true),
 });
 export type AgentSkillLink = z.infer<typeof AgentSkillLink>;
+
+// ---- Eval — case extensions, effective config, drafts (L06) ----
+
+/** Why a case exists: the agent's output must include this, or must never flag it. */
+export const EvalExpectation = z.enum(['must_find', 'must_not_flag']);
+export type EvalExpectation = z.infer<typeof EvalExpectation>;
+
+/**
+ * One item an agent is expected to find (`must_find`). `kind` is
+ * load-bearing: it selects the locality rule the scorer applies — file
+ * equality only for a full-file kind (`secret_leak` | `lethal_trifecta` |
+ * `phantom` | `hook`, mirroring the grounding gate), file + line overlap
+ * otherwise (AC-17). `severity` / `category` / `title` are display-only
+ * provenance and participate in no match.
+ */
+export const EvalExpectedItem = z.object({
+  file: z.string(),
+  start_line: z.number().int(),
+  end_line: z.number().int(),
+  kind: FindingKind,
+  severity: Severity.nullish(),
+  category: FindingCategory.nullish(),
+  title: z.string().nullish(),
+});
+export type EvalExpectedItem = z.infer<typeof EvalExpectedItem>;
+
+/**
+ * The region a `must_not_flag` case's pass rule tests against — a file plus
+ * a line range inherited from the dismissed finding, carrying the same
+ * `kind` for the same file-vs-line-overlap locality rule (AC-22).
+ */
+export const EvalForbiddenRegion = z.object({
+  file: z.string(),
+  start_line: z.number().int(),
+  end_line: z.number().int(),
+  kind: FindingKind,
+});
+export type EvalForbiddenRegion = z.infer<typeof EvalForbiddenRegion>;
+
+/**
+ * The frozen snapshot of the finding a case was seeded from — its original
+ * rationale (AC-4) and its severity/category/kind for the provenance chip
+ * (AC-17). Distinct from `EvalCase.notes`, which is the user's own recorded
+ * reason for a `must_not_flag` case.
+ */
+export const EvalSourceFinding = z.object({
+  finding_id: z.string(),
+  title: z.string(),
+  rationale: z.string(),
+  severity: Severity,
+  category: FindingCategory,
+  kind: FindingKind,
+  file: z.string(),
+  start_line: z.number().int(),
+  end_line: z.number().int(),
+});
+export type EvalSourceFinding = z.infer<typeof EvalSourceFinding>;
+
+/** Outcome of scoring one case — `errored` (infra/model failure) is distinct from `failed` (AC-36). */
+export const EvalCaseOutcome = z.enum(['passed', 'failed', 'errored']);
+export type EvalCaseOutcome = z.infer<typeof EvalCaseOutcome>;
+
+/** One resolved skill in an effective config, pinned BY VALUE, including its version (AC-10). */
+export const EvalSkillPin = z.object({
+  id: z.string(),
+  name: z.string(),
+  version: z.number().int(),
+  order: z.number().int(),
+  enabled: z.boolean(),
+});
+export type EvalSkillPin = z.infer<typeof EvalSkillPin>;
+
+/**
+ * The agent configuration an eval run or draft actually ran against — a
+ * value snapshot, never a reference to `agent_versions` (whose `configJson`
+ * stores skill IDS ONLY and is not re-snapshotted by a skill re-link; see
+ * `AgentVersionConfig` above). `skills` is a resolved `EvalSkillPin[]`, NOT a
+ * bare id array — an id-only pin is exactly the landmine this shape exists
+ * to avoid (AC-10, AC-51).
+ */
+export const EvalEffectiveConfig = z.object({
+  system_prompt: z.string(),
+  provider: Provider,
+  model: z.string(),
+  strategy: ReviewStrategy,
+  repo_intel: z.boolean(),
+  skills: z.array(EvalSkillPin),
+});
+export type EvalEffectiveConfig = z.infer<typeof EvalEffectiveConfig>;
+
+/**
+ * A scratch result of running one case outside a batch (AC-47). Carries no
+ * run identity, is absent from the run history and the trend, and is never
+ * an operand of a comparison (AC-47). `stale` is true once the case's
+ * current effective config or input fingerprint has moved on from what this
+ * draft ran against (AC-48).
+ */
+/**
+ * Lifecycle of an eval run OR a draft. One vocabulary, defined once — a draft
+ * is asynchronous (it issues a real model call), so it needs an in-flight state
+ * exactly as a run does; without it the client cannot tell "running" from
+ * "never drafted", and the one-draft-per-case guard has nothing to render.
+ */
+export const EvalStatus = z.enum(['running', 'done', 'failed', 'cancelled']);
+export type EvalStatus = z.infer<typeof EvalStatus>;
+
+export const EvalDraftResult = z.object({
+  case_id: z.string(),
+  ran_at: z.string(),
+  status: EvalStatus,
+  effective_config: EvalEffectiveConfig,
+  fingerprint: z.string(),
+  /** Null while the draft is still running — an unfinished draft has no outcome. */
+  outcome: EvalCaseOutcome.nullable(),
+  expected_count: z.number().int(),
+  actual_count: z.number().int(),
+  findings: z.array(Finding),
+  duration_ms: z.number().int().nullable(),
+  cost_usd: z.number().nullable(),
+  stale: z.boolean(),
+});
+export type EvalDraftResult = z.infer<typeof EvalDraftResult>;
+
+export const EvalCase = z.object({
+  id: z.string(),
+  owner_kind: EvalOwnerKind,
+  owner_id: z.string(),
+  name: z.string(),
+  expectation: EvalExpectation,
+  input_diff: z.string(),
+  input_files: z.unknown(),
+  input_meta: z.unknown(),
+  expected_output: z.array(EvalExpectedItem),
+  forbidden_region: EvalForbiddenRegion.nullable(),
+  source_finding_id: z.string().nullable(),
+  /** Read-only to the client — set on seed, never accepted via `EvalCaseInput`. */
+  source_finding: EvalSourceFinding.nullable(),
+  /** Server-derived, read-only — a content hash over the frozen inputs + expectation (AC-14). */
+  input_fingerprint: z.string(),
+  notes: z.string().nullish(),
+  latest_draft: EvalDraftResult.nullable(),
+});
+export type EvalCase = z.infer<typeof EvalCase>;

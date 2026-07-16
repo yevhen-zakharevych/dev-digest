@@ -25,6 +25,7 @@ import {
   type EnabledAgentDocs,
 } from './assemble.js';
 import { RawRiskBrief, groundBrief } from './grounding.js';
+import { activeSkillLinks } from '../agents/effective-config.js';
 import {
   BRIEF_DEGRADED_REASONS,
   BRIEF_MAX_TOKENS,
@@ -247,9 +248,10 @@ export class BriefService {
     const agentInputs: EnabledAgentDocs[] = [];
     for (const agent of enabledAgents) {
       const linked = await this.container.agentsRepo.linkedSkills(agent.id);
-      const skillDocs = linked
-        .filter((l) => l.enabled && l.skill.enabled)
-        .map((l) => l.skill.attachedDocs ?? []);
+      // Same single definition of "which skills actually reach the prompt" as
+      // the review and eval paths (`agents/effective-config.ts`) — see the note
+      // in `reviews/run-executor.ts`.
+      const skillDocs = activeSkillLinks(linked).map((l) => l.skill.attachedDocs ?? []);
       agentInputs.push({ attachedDocs: agent.attachedDocs ?? [], skillDocs });
     }
 

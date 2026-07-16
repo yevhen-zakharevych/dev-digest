@@ -8,6 +8,7 @@ import type { ReviewRepository, FindingRow, PullRow, ReviewRow } from './reposit
 import { REVIEW_STRATEGY } from './constants.js';
 import { taskLine } from './helpers.js';
 import { loadDiff } from './diff-loader.js';
+import { activeSkillLinks } from '../agents/effective-config.js';
 import type { IntentService } from './intent.service.js';
 import { formatIntentForPrompt } from './intent.service.js';
 import { resolveProjectContext } from './project-context.js';
@@ -217,13 +218,17 @@ export class ReviewRunExecutor {
       // ENABLED skills are included; disabled ones don't add tokens and don't
       // appear in the run trace's skills slot.
       const linkedSkills = await this.agents.linkedSkills(agent.id);
-      const activeSkillBodies = linkedSkills
-        .filter((l) => l.enabled && l.skill.enabled)
-        .map((l) => l.skill.body);
+      // ONE definition of "which skills actually reach the prompt", shared with
+      // the eval path (`agents/effective-config.ts`). This is not tidying: an
+      // eval run must measure the SAME agent the review path ships (AC-15 of
+      // SPEC-2026-07-13-eval-pipeline). Two copies of this filter would agree
+      // today and drift silently later — and the day they drift, the eval scores
+      // a differently-configured agent and still renders a confident number.
+      const active = activeSkillLinks(linkedSkills);
+      const activeSkillBodies = active.map((l) => l.skill.body);
       if (activeSkillBodies.length > 0) {
         runLog.info(
-          `skills attached: ${activeSkillBodies.length} (${linkedSkills
-            .filter((l) => l.enabled && l.skill.enabled)
+          `skills attached: ${activeSkillBodies.length} (${active
             .map((l) => l.skill.name)
             .join(', ')})`,
         );
@@ -238,9 +243,7 @@ export class ReviewRunExecutor {
       // cached); a missing/unreadable/unsafe path is fail-soft — skipped and
       // recorded in `specsMissing`, never failing the run (AC-22).
       const repoRef: RepoRef = { owner: repo.owner, name: repo.name };
-      const activeSkillDocs = linkedSkills
-        .filter((l) => l.enabled && l.skill.enabled)
-        .map((l) => l.skill.attachedDocs ?? []);
+      const activeSkillDocs = active.map((l) => l.skill.attachedDocs ?? []);
       const projectContext = await resolveProjectContext(
         agent.attachedDocs ?? [],
         activeSkillDocs,

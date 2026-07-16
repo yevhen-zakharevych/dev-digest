@@ -1,12 +1,17 @@
 /* FindingsPanel — hide-low-confidence + j/k navigation + FindingCard list,
-   wiring the accept/dismiss action hook (A2). */
+   wiring the accept/dismiss action hook (A2) and, since L06, the "Turn into
+   eval case" action (AC-1) through the SAME onAction path. */
 "use client";
 
 import React from "react";
 import { useTranslations } from "next-intl";
+import { useRouter } from "next/navigation";
 import { Toggle, EmptyState } from "@devdigest/ui";
 import type { FindingRecord } from "@devdigest/shared";
-import { FindingCard } from "../FindingCard/FindingCard";
+import { ApiError } from "@/lib/api";
+import { useToast } from "@/lib/toast";
+import { useSeedEvalCaseFromFinding } from "@/lib/hooks/evals";
+import { FindingCard, type FindingCardAction } from "../FindingCard/FindingCard";
 import { FindingTargetContext } from "../../_lib/findingTarget.context";
 import { useFindingAction } from "../../../../../../../lib/hooks/reviews";
 import { KEY_TO_ACTION } from "./constants";
@@ -34,7 +39,10 @@ export function FindingsPanel({
   targetNonce?: number;
 }) {
   const t = useTranslations("prReview");
+  const router = useRouter();
+  const toast = useToast();
   const action = useFindingAction();
+  const seedEvalCase = useSeedEvalCaseFromFinding();
   const ctxTarget = React.useContext(FindingTargetContext);
   const effectiveTargetId = targetFindingId ?? ctxTarget.id;
   const effectiveTargetNonce = targetNonce ?? ctxTarget.nonce;
@@ -67,6 +75,32 @@ export function FindingsPanel({
     return () => window.removeEventListener("keydown", handler);
   }, [shown, focusIdx, action, prId]);
 
+  /**
+   * Turn a decided finding into an eval case (AC-1). The server enforces
+   * one case per source finding (AC-8) — invoking this twice always yields
+   * ONE case; the second call resolves with `created: false` and we still
+   * navigate to that existing case rather than silently no-op'ing.
+   */
+  const handleSeedEvalCase = (findingId: string) => {
+    seedEvalCase.mutate(findingId, {
+      onSuccess: ({ case: evalCase, created }) => {
+        toast.success(t(created ? "finding.turnIntoEvalCaseCreated" : "finding.turnIntoEvalCaseExists"));
+        router.push(`/evals/cases/${evalCase.id}`);
+      },
+      onError: (err) => {
+        toast.error(err instanceof ApiError && err.message ? err.message : t("finding.turnIntoEvalCaseNoDiff"));
+      },
+    });
+  };
+
+  const handleAction = (findingId: string, act: FindingCardAction) => {
+    if (act === "seed_eval_case") {
+      handleSeedEvalCase(findingId);
+      return;
+    }
+    action.mutate({ findingId, action: act, prId });
+  };
+
   return (
     <div>
       <div style={s.toolbar}>
@@ -91,7 +125,7 @@ export function FindingsPanel({
               headSha={headSha}
               targetFindingId={effectiveTargetId}
               targetNonce={effectiveTargetNonce}
-              onAction={(act) => action.mutate({ findingId: f.id, action: act, prId })}
+              onAction={(act) => handleAction(f.id, act)}
             />
           ))
         )}

@@ -1,0 +1,47 @@
+diff --git a/reviewer-core/src/review/run.ts b/reviewer-core/src/review/run.ts
+index ccccccc..ddddddd 100644
+--- a/reviewer-core/src/review/run.ts
++++ b/reviewer-core/src/review/run.ts
+@@ -1,3 +1,5 @@
++import { readFileSync } from 'node:fs';
++
+ import type {
+   Finding,
+   LLMProvider,
+@@ -8,7 +10,7 @@ import type {
+ } from '@devdigest/shared';
+ import { Review as ReviewSchema } from '@devdigest/shared';
+ import { assemblePrompt } from '../prompt.js';
+-import { groundFindings, groundingSummary } from '../grounding.js';
++import { groundingSummary } from '../grounding.js';
+ import { annotateDiffLines, reduceReviews, scoreFromFindings, sliceDiff } from './reduce.js';
+
+@@ -205,20 +207,18 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutpu
+   const merged = reduceReviews(partials);
++
++  // Load the reviewer's tuning overrides straight off disk.
++  const overrides = JSON.parse(readFileSync('./reviewer-core.overrides.json', 'utf8'));
++  const minScore = overrides.minScore ?? 0;
++
+   emit(
+     'result',
+     `Reduced to ${merged.findings.length} finding(s); verdict=${merged.verdict}, score=${merged.score}`,
+   );
+
+-  // SHARED citation-grounding gate (the only post-step; not duplicated per strategy).
+-  const ground = groundFindings(merged.findings, input.diff);
+-  const grounding = groundingSummary(ground);
+-  for (const d of ground.dropped) {
+-    emit('info', `grounding dropped "${d.finding.title}": ${d.reason}`);
+-  }
+-  emit('result', `Citation grounding: ${grounding}`);
++  const kept = merged.findings.filter((f) => f.score >= minScore);
+
+   return {
+-    review: { ...merged, findings: ground.kept, score: scoreFromFindings(ground.kept) },
+-    grounding,
+-    dropped: ground.dropped,
++    review: { ...merged, findings: kept, score: scoreFromFindings(kept) },
++    grounding: 'skipped',
++    dropped: [],
+     mode,

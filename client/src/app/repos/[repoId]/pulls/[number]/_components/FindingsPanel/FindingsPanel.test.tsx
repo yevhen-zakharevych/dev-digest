@@ -1,16 +1,35 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import type { FindingRecord } from "@devdigest/shared";
 import messages from "../../../../../../../../messages/en/prReview.json";
+import { ToastProvider } from "@/lib/toast";
+
+// jsdom doesn't implement scrollIntoView (FindingCard's deep-link effect,
+// `client/INSIGHTS.md:39`).
+Element.prototype.scrollIntoView = vi.fn();
 
 vi.mock("../../../../../../../lib/hooks/reviews", () => ({
   useFindingAction: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
+const push = vi.fn();
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push }),
+}));
+
+const seedMutate = vi.fn();
+vi.mock("@/lib/hooks/evals", () => ({
+  useSeedEvalCaseFromFinding: () => ({ mutate: seedMutate }),
+}));
+
 import { FindingsPanel } from "./FindingsPanel";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  push.mockClear();
+  seedMutate.mockClear();
+});
 
 const FINDINGS: FindingRecord[] = [
   {
@@ -36,7 +55,7 @@ const FINDINGS: FindingRecord[] = [
 function renderWithIntl(ui: React.ReactElement) {
   return render(
     <NextIntlClientProvider locale="en" messages={{ prReview: messages }}>
-      {ui}
+      <ToastProvider>{ui}</ToastProvider>
     </NextIntlClientProvider>,
   );
 }
