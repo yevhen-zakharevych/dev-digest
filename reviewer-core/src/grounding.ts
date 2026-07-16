@@ -13,7 +13,7 @@ import type { Finding, UnifiedDiff } from '@devdigest/shared';
  * phantom, hook} as full-file: they only require the file to be present.
  */
 
-const FULL_FILE_KINDS = new Set(['secret_leak', 'lethal_trifecta', 'phantom', 'hook']);
+export const FULL_FILE_KINDS = new Set(['secret_leak', 'lethal_trifecta', 'phantom', 'hook']);
 
 export interface GroundingResult {
   kept: Finding[];

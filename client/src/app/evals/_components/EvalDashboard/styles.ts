@@ -1,0 +1,83 @@
+import type { CSSProperties } from "react";
+
+/** Co-located styles for EvalDashboard. */
+export const s = {
+  wrap: { padding: "20px 28px 48px", maxWidth: 1180 } satisfies CSSProperties,
+  head: { display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 18 } satisfies CSSProperties,
+  title: { fontSize: 20, fontWeight: 700 } satisfies CSSProperties,
+  subtitle: { fontSize: 13, color: "var(--text-muted)", marginTop: 4 } satisfies CSSProperties,
+  flexGrow: { flex: 1 } satisfies CSSProperties,
+  alert: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    padding: "12px 16px",
+    borderRadius: 8,
+    border: "1px solid var(--warn, #b58900)",
+    background: "var(--warn-bg, rgba(181,137,0,0.1))",
+    color: "var(--text-primary)",
+    fontSize: 13,
+    marginBottom: 18,
+  } satisfies CSSProperties,
+  sectionHeading: { fontSize: 14, fontWeight: 700, margin: "26px 0 12px" } satisfies CSSProperties,
+  agentsGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
+    gap: 14,
+  } satisfies CSSProperties,
+  agentCard: { display: "flex", flexDirection: "column", gap: 12 } satisfies CSSProperties,
+  agentCardHead: { display: "flex", alignItems: "center", gap: 8 } satisfies CSSProperties,
+  agentName: { fontSize: 14, fontWeight: 600, flex: 1 } satisfies CSSProperties,
+  // `minWidth: 0` on the children is the load-bearing bit: a flex item defaults
+  // to `min-width: auto`, i.e. it will NOT shrink below its own content and will
+  // overflow the card instead. Every three-up row inside a grid column needs it.
+  metricsRow: { display: "flex", gap: 8, minWidth: 0 } satisfies CSSProperties,
+  miniMetric: {
+    flex: 1,
+    minWidth: 0,
+    background: "var(--bg-elevated)",
+    border: "1px solid var(--border)",
+    borderRadius: 8,
+    padding: "8px 10px",
+  } satisfies CSSProperties,
+  miniMetricLabel: {
+    fontSize: 10.5,
+    fontWeight: 600,
+    letterSpacing: "0.04em",
+    textTransform: "uppercase",
+    color: "var(--text-muted)",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  } satisfies CSSProperties,
+  miniMetricValue: {
+    fontSize: 20,
+    fontWeight: 700,
+    letterSpacing: "-0.01em",
+    marginTop: 2,
+  } satisfies CSSProperties,
+  emptyHint: { fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5 } satisfies CSSProperties,
+  passingLine: { fontSize: 12.5, color: "var(--text-secondary)" } satisfies CSSProperties,
+  tableWrap: { display: "flex", flexDirection: "column", gap: 6 } satisfies CSSProperties,
+  tableHeadRow: {
+    display: "grid",
+    gridTemplateColumns: "1.4fr 0.55fr 0.75fr 1fr 0.6fr 0.6fr 0.6fr 0.6fr 0.6fr",
+    gap: 10,
+    padding: "6px 14px",
+    fontSize: 11,
+    fontWeight: 700,
+    letterSpacing: "0.04em",
+    textTransform: "uppercase",
+    color: "var(--text-muted)",
+  } satisfies CSSProperties,
+  tableRow: {
+    display: "grid",
+    gridTemplateColumns: "1.4fr 0.55fr 0.75fr 1fr 0.6fr 0.6fr 0.6fr 0.6fr 0.6fr",
+    gap: 10,
+    alignItems: "center",
+    padding: "10px 14px",
+    fontSize: 13,
+  } satisfies CSSProperties,
+  modalBody: { padding: 24, display: "flex", flexDirection: "column", gap: 14 } satisfies CSSProperties,
+  modalFooter: { display: "flex", gap: 10, justifyContent: "flex-end" } satisfies CSSProperties,
+} as const;

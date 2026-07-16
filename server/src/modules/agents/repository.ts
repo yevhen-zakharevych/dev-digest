@@ -1,8 +1,15 @@
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { Db } from '../../db/client.js';
 import * as t from '../../db/schema.js';
-import type { CiFailOn, Provider, ReviewStrategy } from '@devdigest/shared';
+import type {
+  CiFailOn,
+  EvalEffectiveConfig,
+  EvalSkillVersionDivergence,
+  Provider,
+  ReviewStrategy,
+} from '@devdigest/shared';
 import { DEFAULT_AGENT_DESCRIPTION, INITIAL_AGENT_VERSION } from './constants.js';
+import { resolveEffectiveConfig } from './effective-config.js';
 import { isConfigChange } from './helpers.js';
 
 /**
@@ -49,6 +56,28 @@ export interface LinkedSkillRow {
   enabled: boolean;
 }
 
+/** Outcome of `promoteConfig` (AC-27). `config` is what is LIVE after the promote —
+ *  re-resolved from the written rows, not the input echoed back. */
+export interface PromoteConfigResult {
+  agent: AgentRow;
+  /** The NEW version appended at the head of the agent's history. */
+  version: number;
+  config: EvalEffectiveConfig;
+  /** Pinned skills whose live body-version has moved on since the run (REC-3 / A-2). */
+  skillVersionDivergence: EvalSkillVersionDivergence[];
+}
+
+/**
+ * Outcome of `promoteConfig`. A repository reports WHAT happened; deciding that a
+ * refusal is an HTTP 400 is the service's call — no repository in this codebase
+ * imports `platform/errors` (8 services do). Shape follows the existing
+ * `ResolveResult` idiom (`server/INSIGHTS.md:157`): intersection-then-union, which
+ * still narrows on `.ok`.
+ */
+export type PromoteConfigOutcome =
+  | ({ ok: true } & PromoteConfigResult)
+  | { ok: false; reason: 'missing_skills'; missingSkills: { id: string; name: string }[] };
+
 export class AgentsRepository {
   constructor(private db: Db) {}
 
@@ -87,15 +116,39 @@ export class AgentsRepository {
     return row;
   }
 
-  /** Delete an agent (scoped to workspace). Versions/skill-links cascade;
-   *  agent_runs keep their history with agent_id set null. Returns false if
-   *  no such agent existed in the workspace. */
+  /**
+   * Delete an agent (scoped to workspace). Versions/skill-links cascade;
+   * agent_runs keep their history with agent_id set null. Returns false if
+   * no such agent existed in the workspace.
+   *
+   * AC-53 — the eval cases owned by the agent are deleted **application-side,
+   * in the same transaction**. `eval_cases.owner_id` is polymorphic
+   * (`owner_kind` is `'skill' | 'agent'`) and therefore carries **no FK**, so
+   * Postgres will not cascade it: without this, deleting an agent would leave
+   * orphaned cases that are still readable. Eval runs and drafts *do* have a
+   * real `agent_id` FK and cascade for free (and take their per-case results
+   * with them), which is why they are deleted first — by the agent row's own
+   * cascade — before the cases they point at.
+   */
   async deleteById(workspaceId: string, id: string): Promise<boolean> {
-    const rows = await this.db
-      .delete(t.agents)
-      .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.id, id)))
-      .returning({ id: t.agents.id });
-    return rows.length > 0;
+    return this.db.transaction(async (tx) => {
+      const rows = await tx
+        .delete(t.agents)
+        .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.id, id)))
+        .returning({ id: t.agents.id });
+      if (rows.length === 0) return false;
+
+      await tx
+        .delete(t.evalCases)
+        .where(
+          and(
+            eq(t.evalCases.workspaceId, workspaceId),
+            eq(t.evalCases.ownerKind, 'agent'),
+            eq(t.evalCases.ownerId, id),
+          ),
+        );
+      return true;
+    });
   }
 
   /** Insert an agent AND record version 1 in agent_versions (immutable snapshot). */
@@ -278,6 +331,159 @@ export class AgentsRepository {
           enabled: prevEnabled.get(skillId) ?? true,
         })),
       );
+  }
+
+  // ---- promote (eval → live config) ---------------------------------------
+
+  /**
+   * AC-27 — make a run's pinned **effective config** the agent's **live**
+   * config: the prompt/provider/model/strategy/`repo_intel` fields **and** the
+   * skill links it pins, appending a **new** version at the head of the
+   * (append-only) history. No existing version is ever deleted or rewritten.
+   *
+   * Three things here are load-bearing, and all three are wrong in the obvious
+   * implementation — silently, and green:
+   *
+   * 1. **Order: links FIRST, snapshot AFTER.** `snapshotVersion` reads the
+   *    agent's *current* skill links (`skillIdsForAgent`, above). `update()`
+   *    calls it internally, so the natural `update()`-then-`setSkills()` would
+   *    write a snapshot describing the **pre-promote** skill set — a version
+   *    that exists but lies about what is in it.
+   * 2. **The bump is UNCONDITIONAL, and promote owns it.** `isConfigChange()`
+   *    compares only the eight `agents`-row fields and `UpdateAgent` has no
+   *    `skills` field at all, so a promote differing from the live agent
+   *    **only in its skill set** would pass `update()` with nothing changed →
+   *    no version, no snapshot → AC-27's observable fails in exactly the
+   *    skill-regression scenario this feature exists to catch. `isConfigChange`
+   *    is deliberately NOT weakened: that would change every ordinary agent
+   *    update repo-wide.
+   * 3. **Link `enabled` comes from the PIN, not from today's links.**
+   *    `setSkills` deliberately *preserves* the live per-link `enabled` flag
+   *    (it is a reorder-only helper). Reusing it would re-link a pinned skill
+   *    whose live link is disabled as **still disabled** — the skill would not
+   *    reach the prompt, and the "restored" config would not equal the one the
+   *    run measured. Promote therefore writes the links itself.
+   *
+   * All of it in ONE transaction. Returns `undefined` when no such agent exists
+   * in the workspace (route → 404).
+   *
+   * `skillVersionDivergence` reports any pinned skill whose **live version has
+   * moved on** since the run (a body edit bumps the skill's own version only).
+   * Promote restores skill **links**, not skill **bodies** — the divergence is
+   * surfaced rather than silently shipping content no eval run ever measured.
+   */
+  async promoteConfig(
+    workspaceId: string,
+    agentId: string,
+    cfg: EvalEffectiveConfig,
+  ): Promise<PromoteConfigOutcome | undefined> {
+    return this.db.transaction(async (tx) => {
+      // The tx handle is API-compatible with `Db`; the cast lets the whole
+      // promote reuse the repository's own readers/snapshot inside the tx.
+      const txRepo = new AgentsRepository(tx as unknown as Db);
+
+      const existing = await txRepo.getById(workspaceId, agentId);
+      if (!existing) return undefined;
+
+      // Pinned skills as they live TODAY (workspace-scoped). A skill deleted
+      // since the run cannot be re-linked — fail loudly here rather than let
+      // the agent_skills FK blow up as a 500, or (worse) silently drop it and
+      // report a "promoted" config the agent does not actually have.
+      const pinned = [...cfg.skills].sort((a, b) => a.order - b.order);
+      const liveSkills = pinned.length
+        ? await tx
+            .select()
+            .from(t.skills)
+            .where(
+              and(
+                eq(t.skills.workspaceId, workspaceId),
+                inArray(
+                  t.skills.id,
+                  pinned.map((s) => s.id),
+                ),
+              ),
+            )
+        : [];
+      const liveById = new Map(liveSkills.map((s) => [s.id, s]));
+      const missing = pinned.filter((s) => !liveById.has(s.id));
+      if (missing.length > 0) {
+        // Report, do not decide the HTTP status. Returning (rather than throwing)
+        // still aborts before any write, so nothing is committed — and the check
+        // stays INSIDE the transaction, which hoisting it to the service would
+        // not (that would open a TOCTOU window between the check and the writes).
+        return {
+          ok: false as const,
+          reason: 'missing_skills' as const,
+          missingSkills: missing.map((s) => ({ id: s.id, name: s.name })),
+        };
+      }
+
+      // (1) SKILL LINKS FIRST — so the snapshot taken below sees the PROMOTED
+      //     set. `enabled` is taken from the pin (see #3 above), and `order` is
+      //     re-indexed 0..n-1 in the pin's own order, matching `setSkills`.
+      await tx.delete(t.agentSkills).where(eq(t.agentSkills.agentId, agentId));
+      if (pinned.length > 0) {
+        await tx.insert(t.agentSkills).values(
+          pinned.map((s, i) => ({
+            agentId,
+            skillId: s.id,
+            order: i,
+            enabled: s.enabled,
+          })),
+        );
+      }
+
+      // (2) UNCONDITIONAL version bump — never routed through `update()`.
+      //     Head of the history, not merely `agents.version + 1`: the two are
+      //     equal today, but taking the max makes the new version provably new
+      //     (and keeps `snapshotVersion`'s `onConflictDoNothing` from silently
+      //     swallowing the snapshot).
+      const [head] = await tx
+        .select({ version: t.agentVersions.version })
+        .from(t.agentVersions)
+        .where(eq(t.agentVersions.agentId, agentId))
+        .orderBy(desc(t.agentVersions.version))
+        .limit(1);
+      const nextVersion = Math.max(existing.version, head?.version ?? 0) + 1;
+
+      const [row] = await tx
+        .update(t.agents)
+        .set({
+          systemPrompt: cfg.system_prompt,
+          provider: cfg.provider,
+          model: cfg.model,
+          strategy: cfg.strategy,
+          repoIntel: cfg.repo_intel,
+          version: nextVersion,
+        })
+        .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.id, agentId)))
+        .returning();
+
+      // (3) Snapshot AFTER the links — captures the promoted skill set.
+      await txRepo.snapshotVersion(row!, nextVersion);
+
+      // What is live NOW (re-resolved, not assumed): the honest answer to
+      // "what did promote actually make live", including any skill whose body
+      // version moved on since the run.
+      const links = await txRepo.linkedSkills(agentId);
+      const { config } = resolveEffectiveConfig(row!, links);
+
+      const skillVersionDivergence: EvalSkillVersionDivergence[] = pinned.flatMap((pin) => {
+        const live = liveById.get(pin.id)!;
+        return live.version === pin.version
+          ? []
+          : [
+              {
+                skill_id: pin.id,
+                name: live.name,
+                pinned_version: pin.version,
+                live_version: live.version,
+              },
+            ];
+      });
+
+      return { ok: true as const, agent: row!, version: nextVersion, config, skillVersionDivergence };
+    });
   }
 
   // ---- attached_docs (project-context docs, mutable config) ---------------

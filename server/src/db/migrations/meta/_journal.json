@@ -113,6 +113,13 @@
       "when": 1783712381473,
       "tag": "0015_illegal_the_fury",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1783976170196,
+      "tag": "0016_tranquil_vindicator",
+      "breakpoints": true
     }
   ]
 }

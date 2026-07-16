@@ -23,6 +23,17 @@ import { lineLabel } from "./helpers";
 import { githubBlobUrl } from "../../../../../../../lib/github-urls";
 import { s } from "./styles";
 
+/**
+ * The finding-level action vocabulary, widened by one literal for the L06
+ * "Turn into eval case" control (AC-1). `"seed_eval_case"` is deliberately
+ * NOT added to the shared `FindingActionKind` contract — it never reaches
+ * `POST /findings/:id/action` (the endpoint `FindingActionKind` describes);
+ * it is routed to `POST /eval/cases/from-finding` instead, one level up
+ * (`FindingsPanel.tsx`). Widening the callback prop here, rather than the
+ * vendored contract, keeps Accept/Dismiss's wire shape untouched.
+ */
+export type FindingCardAction = FindingActionKind | "seed_eval_case";
+
 export function FindingCard({
   f,
   focused,
@@ -37,7 +48,7 @@ export function FindingCard({
   f: FindingRecord;
   focused?: boolean;
   defaultExpanded?: boolean;
-  onAction?: (action: FindingActionKind, reply?: string) => void;
+  onAction?: (action: FindingCardAction, reply?: string) => void;
   pending?: boolean;
   repoFullName?: string | null;
   headSha?: string | null;
@@ -138,6 +149,25 @@ export function FindingCard({
               onClick={() => onAction?.("dismiss")}
             >
               {t("finding.dismiss")}
+            </Button>
+            {/* AC-2: an undecided finding (neither accepted nor dismissed)
+                disables this control and names the reason — the decision IS
+                the expectation (accepted -> must_find, dismissed ->
+                must_not_flag); there is nothing to derive without one. */}
+            <Button
+              kind="ghost"
+              size="sm"
+              icon="FlaskConical"
+              disabled={pending || !muted}
+              aria-label={
+                muted
+                  ? t("finding.turnIntoEvalCase")
+                  : `${t("finding.turnIntoEvalCase")} — ${t("finding.turnIntoEvalCaseNeedsDecision")}`
+              }
+              title={muted ? undefined : t("finding.turnIntoEvalCaseNeedsDecision")}
+              onClick={() => onAction?.("seed_eval_case")}
+            >
+              {t("finding.turnIntoEvalCase")}
             </Button>
           </div>
         </div>

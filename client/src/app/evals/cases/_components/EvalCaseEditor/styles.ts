@@ -1,0 +1,51 @@
+import type { CSSProperties } from "react";
+
+/** Co-located styles for EvalCaseEditor. */
+export const s = {
+  wrap: { padding: "20px 28px 60px", maxWidth: 860, display: "flex", flexDirection: "column", gap: 4 } satisfies CSSProperties,
+  head: { display: "flex", alignItems: "center", gap: 10, marginBottom: 8 } satisfies CSSProperties,
+  title: { fontSize: 18, fontWeight: 700, flex: 1 } satisfies CSSProperties,
+  negativeBanner: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 4,
+    padding: "10px 14px",
+    borderRadius: 8,
+    border: "1px solid var(--crit)",
+    background: "var(--crit-bg)",
+    marginBottom: 16,
+  } satisfies CSSProperties,
+  negativeBannerLabel: { fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", color: "var(--crit)" } satisfies CSSProperties,
+  sourceCard: { display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 } satisfies CSSProperties,
+  provenanceRow: { display: "flex", alignItems: "center", gap: 10 } satisfies CSSProperties,
+  fieldError: { fontSize: 12, color: "var(--crit)", marginTop: 6 } satisfies CSSProperties,
+  itemRow: {
+    display: "grid",
+    gridTemplateColumns: "2fr 0.7fr 0.7fr 1.1fr auto",
+    gap: 8,
+    alignItems: "start",
+    marginBottom: 10,
+  } satisfies CSSProperties,
+  itemsWrap: { marginBottom: 20 } satisfies CSSProperties,
+  itemsHeadRow: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 } satisfies CSSProperties,
+  footer: {
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    padding: "14px 0",
+    borderTop: "1px solid var(--border)",
+    marginTop: 8,
+  } satisfies CSSProperties,
+  footerToggle: { display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--text-secondary)" } satisfies CSSProperties,
+  draftSummary: { display: "flex", flexDirection: "column", gap: 4, fontSize: 13, marginTop: 12 } satisfies CSSProperties,
+  saveErrorBox: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 6,
+    padding: "10px 14px",
+    borderRadius: 8,
+    border: "1px solid var(--crit)",
+    background: "var(--crit-bg)",
+    marginTop: 12,
+  } satisfies CSSProperties,
+} as const;
