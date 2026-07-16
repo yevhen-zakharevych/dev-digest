@@ -15,3 +15,4 @@ report a column, leave the cell as `—`.
 - **Fix-loop iters** is the headline quality number (lower is better; landmine-hoisting into spawn prompts is what drove it to 0 in the second run).
 - **Total cache-read** is the real cost of a fan-out, not output tokens — watch it per agent-count to see if wider fleets are getting cheaper or just busier.
 - A run with no review/fix-loop gate at all (e.g. a solo redesign task) should still get a row — record `0` fix-loop iterations but flag the gate gap in the retro's own "what it cost us", as the onboarding-generator row does.
+| 2026-07-16 | [eval-pipeline](2026-07-16-eval-pipeline.md) | `e97d6e12…` | 27 (19 depth-1 + 8 depth-2 researchers) | 2 (cap 2) | ~1.9M (main 846.9k + agents 1,060.3k) | ~638M (main 340.2M + agents 297.7M) | Landmine-hoist held (1 of 27 agents read INSIGHTS, vs 14 last time); cost dominated by cache-read at ~335× output |

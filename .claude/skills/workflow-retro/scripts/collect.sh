@@ -14,7 +14,10 @@ PROJ="$HOME/.claude/projects/$SLUG"
 
 SID="${1:-}"
 if [ -z "$SID" ]; then
-  SID="$(ls -t "$PROJ"/*.jsonl 2>/dev/null | head -1 | xargs -r basename | sed 's/\.jsonl$//')"
+  # `|| true`: `head -1` closes the pipe early, so `ls` gets SIGPIPE (exit 141)
+  # and `set -o pipefail` would abort the whole script. There are hundreds of
+  # session transcripts in this dir, so this fires every time.
+  SID="$(ls -t "$PROJ"/*.jsonl 2>/dev/null | head -1 | xargs -r basename | sed 's/\.jsonl$//' || true)"
 fi
 [ -n "$SID" ] || { echo '{"error":"no session transcript found"}'; exit 0; }
 
@@ -72,7 +75,9 @@ if [ -d "$SUB" ]; then
    | awk -F'\t' '{k=$2"\t"$3; c[k]++} END{for (k in c) if (c[k]>1) printf "%d\t%s\n", c[k], k}' \
    | sort -rn | head -25 \
    | jq -Rs 'split("\n") | map(select(length>0) | split("\t") |
-       {agents: (.[0]|tonumber), tool: .[1], target: .[2]})')
+       {agents: (.[0]|tonumber), tool: .[1], target: .[2]})' || true)
+  # `|| true`: same SIGPIPE-under-pipefail hazard as the SID line — `head -25`
+  # closes the pipe, `sort -rn` gets SIGPIPE, pipefail would abort the run.
 fi
 
 jq -n --arg sid "$SID" \

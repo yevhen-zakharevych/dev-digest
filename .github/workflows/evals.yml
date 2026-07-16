@@ -32,12 +32,21 @@
 
 name: evals
 
-# NOTE: deliberately NO `paths:` filter. These jobs are meant to be REQUIRED checks, and a required
-# check with a paths filter leaves every non-matching PR stuck on "Expected" forever. Gating happens
-# in the `changes` job + per-job `if:` instead — a *skipped* job counts as SUCCESS for branch
-# protection. Cost: ~1 min of free runner time on PRs that touch nothing in the harness.
+# MANUAL ONLY. This workflow does NOT run on `pull_request` — it is triggered by hand from the
+# Actions tab (or `gh workflow run evals.yml`). Reason: the model tiers call OpenRouter on a shared
+# key with a WEEKLY budget, so a per-PR trigger burns that budget and the job then goes red on
+# `403 Key limit exceeded` — an infra failure unrelated to the artifact under test.
+#
+# On manual dispatch there is no PR to diff against, so the `changes` job falls back to "everything
+# changed" (diff from the root commit) and runs every suite — see the BASE_SHA fallback below.
+#
+# IF YOU RE-ENABLE `pull_request:` — these jobs were designed to be REQUIRED checks, so keep the
+# deliberate absence of a `paths:` filter: a required check with a paths filter leaves every
+# non-matching PR stuck on "Expected" forever. Gating is done in the `changes` job + per-job `if:`
+# instead (a *skipped* job counts as SUCCESS for branch protection). And a required check with NO
+# trigger has the same wedge — so making this manual-only is only safe while `evals` is NOT a
+# required status check (verified 2026-07-16: `main` is unprotected, no required checks).
 on:
-  pull_request:
   workflow_dispatch:
     inputs:
       skills_model:
