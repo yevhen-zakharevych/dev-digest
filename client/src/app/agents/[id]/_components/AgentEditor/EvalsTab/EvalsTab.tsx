@@ -42,6 +42,8 @@ import {
   useEvalRun,
   useStartEvalRun,
 } from "@/lib/hooks/evals";
+import { EvalCaseModal } from "@/features/evals/components/EvalCaseModal";
+import { EvalCompareModal } from "@/features/evals/components/EvalCompareModal";
 import { CaseRow } from "./CaseRow";
 import { formatDateTime, formatPercent, inFlightRun, latestDoneRun, statusForCase } from "./helpers";
 import { s } from "./styles";
@@ -68,8 +70,11 @@ export function EvalsTab({ agent }: { agent: Agent }) {
   const startRun = useStartEvalRun();
   const cancelRun = useCancelEvalRun();
   const [confirmRunAll, setConfirmRunAll] = React.useState(false);
-  /** Newest-first pick order; the compare link sends the OLDER run as `a` (base). */
+  /** Newest-first pick order; the compare modal gets the OLDER run as `a` (base). */
   const [selectedRuns, setSelectedRuns] = React.useState<string[]>([]);
+  const [compareRuns, setCompareRuns] = React.useState<{ a: string; b: string } | null>(null);
+  /** New case (`{}`) or edit an existing one (`{ caseId }`) — both in a modal. */
+  const [caseModal, setCaseModal] = React.useState<{ caseId?: string } | null>(null);
 
   const runs = dashboard?.recent_runs ?? [];
   const running = inFlightRun(runs);
@@ -115,8 +120,8 @@ export function EvalsTab({ agent }: { agent: Agent }) {
     startRun.mutate(agent.id);
   };
 
-  const handleEdit = (caseId: string) => router.push(`/evals/cases/${caseId}`);
-  const handleNewCase = () => router.push(`/evals/cases/new?agentId=${agent.id}`);
+  const handleEdit = (caseId: string) => setCaseModal({ caseId });
+  const handleNewCase = () => setCaseModal({});
   const handleDelete = (caseId: string) => deleteCase.mutate(caseId);
 
   return (
@@ -217,11 +222,7 @@ export function EvalsTab({ agent }: { agent: Agent }) {
           <Button
             kind="secondary"
             disabled={selectedRuns.length !== 2}
-            onClick={() =>
-              router.push(
-                `/evals/compare?a=${selectedRuns[1]}&b=${selectedRuns[0]}&agentId=${agent.id}`,
-              )
-            }
+            onClick={() => setCompareRuns({ a: selectedRuns[1]!, b: selectedRuns[0]! })}
           >
             {t("compare.compare")}
           </Button>
@@ -384,6 +385,24 @@ export function EvalsTab({ agent }: { agent: Agent }) {
             {t("dashboard.runPreview", { count: casesTotal })}
           </div>
         </Modal>
+      )}
+
+      {compareRuns && (
+        <EvalCompareModal
+          runIdA={compareRuns.a}
+          runIdB={compareRuns.b}
+          agentId={agent.id}
+          onClose={() => setCompareRuns(null)}
+        />
+      )}
+
+      {caseModal && (
+        <EvalCaseModal
+          caseId={caseModal.caseId}
+          agentId={agent.id}
+          agentName={agent.name}
+          onClose={() => setCaseModal(null)}
+        />
       )}
     </div>
   );

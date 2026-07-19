@@ -83,6 +83,7 @@
   },
   "compare": {
     "title": "Compare runs · {a} → {b}",
+    "modalTitle": "Compare runs",
     "subtitle": "Old prompt vs new — metric deltas and prompt diff",
     "selectTwo": "Select two runs to compare",
     "compare": "Compare",
@@ -125,6 +126,7 @@
     "newCase": "New eval case",
     "caseTitle": "Eval case · {name}",
     "subtitlePositive": "{agent} · simulate a PR and assert the expected output",
+    "subtitlePositiveGeneric": "Simulate a PR and assert the expected output",
     "subtitleNegative": "Seeded from a dismissed finding · assert the expected output",
     "runCase": "Run case",
     "runOnSave": "Run on save",

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { Badge, Card, EmptyState } from "@devdigest/ui";
 import type { EvalRunSummary } from "@devdigest/shared";
-import { formatCost, formatDateTime, formatPercent } from "../../../_lib/format";
+import { formatCost, formatDateTime, formatPercent } from "@/features/evals/format";
 import { s } from "../styles";
 
 const STATUS_COLOR: Record<EvalRunSummary["status"], string> = {

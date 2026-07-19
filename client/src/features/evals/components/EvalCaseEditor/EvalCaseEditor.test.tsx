@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach, vi } from "vitest";
 import { render, screen, cleanup, fireEvent, within, waitFor } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import type { EvalCase } from "@devdigest/shared";
-import messages from "../../../../../../messages/en/eval.json";
+import messages from "../../../../../messages/en/eval.json";
 
 // House style: mock the hooks module the component consumes directly
 // (client/INSIGHTS.md — no MSW precedent in this repo; fireEvent, not

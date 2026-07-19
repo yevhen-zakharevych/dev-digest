@@ -4,7 +4,7 @@ import React from "react";
 import { useTranslations } from "next-intl";
 import { Badge, Button } from "@devdigest/ui";
 import type { EvalDraftResult } from "@devdigest/shared";
-import { formatCost, formatDurationSeconds } from "../../../../_lib/format";
+import { formatCost, formatDurationSeconds } from "../../../format";
 import { s } from "../styles";
 
 const OUTCOME_KEY: Record<NonNullable<EvalDraftResult["outcome"]>, string> = {

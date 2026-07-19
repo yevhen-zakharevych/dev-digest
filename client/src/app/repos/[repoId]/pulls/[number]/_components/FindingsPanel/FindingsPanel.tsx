@@ -5,12 +5,12 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { useRouter } from "next/navigation";
 import { Toggle, EmptyState } from "@devdigest/ui";
 import type { FindingRecord } from "@devdigest/shared";
 import { ApiError } from "@/lib/api";
 import { useToast } from "@/lib/toast";
 import { useSeedEvalCaseFromFinding } from "@/lib/hooks/evals";
+import { EvalCaseModal } from "@/features/evals/components/EvalCaseModal";
 import { FindingCard, type FindingCardAction } from "../FindingCard/FindingCard";
 import { FindingTargetContext } from "../../_lib/findingTarget.context";
 import { useFindingAction } from "../../../../../../../lib/hooks/reviews";
@@ -39,10 +39,10 @@ export function FindingsPanel({
   targetNonce?: number;
 }) {
   const t = useTranslations("prReview");
-  const router = useRouter();
   const toast = useToast();
   const action = useFindingAction();
   const seedEvalCase = useSeedEvalCaseFromFinding();
+  const [modalCaseId, setModalCaseId] = React.useState<string | null>(null);
   const ctxTarget = React.useContext(FindingTargetContext);
   const effectiveTargetId = targetFindingId ?? ctxTarget.id;
   const effectiveTargetNonce = targetNonce ?? ctxTarget.nonce;
@@ -79,13 +79,13 @@ export function FindingsPanel({
    * Turn a decided finding into an eval case (AC-1). The server enforces
    * one case per source finding (AC-8) — invoking this twice always yields
    * ONE case; the second call resolves with `created: false` and we still
-   * navigate to that existing case rather than silently no-op'ing.
+   * open that existing case in the modal rather than silently no-op'ing.
    */
   const handleSeedEvalCase = (findingId: string) => {
     seedEvalCase.mutate(findingId, {
       onSuccess: ({ case: evalCase, created }) => {
         toast.success(t(created ? "finding.turnIntoEvalCaseCreated" : "finding.turnIntoEvalCaseExists"));
-        router.push(`/evals/cases/${evalCase.id}`);
+        setModalCaseId(evalCase.id);
       },
       onError: (err) => {
         toast.error(err instanceof ApiError && err.message ? err.message : t("finding.turnIntoEvalCaseNoDiff"));
@@ -130,6 +130,8 @@ export function FindingsPanel({
           ))
         )}
       </div>
+
+      {modalCaseId && <EvalCaseModal caseId={modalCaseId} onClose={() => setModalCaseId(null)} />}
     </div>
   );
 }

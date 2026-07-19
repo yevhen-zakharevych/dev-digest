@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach, vi } from "vitest";
 import { render, screen, cleanup, fireEvent, within } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import type { EvalComparison, EvalRunSummary } from "@devdigest/shared";
-import messages from "../../../../../../messages/en/eval.json";
+import messages from "../../../../../messages/en/eval.json";
 
 vi.mock("@/lib/hooks/evals", () => ({
   useEvalComparison: vi.fn(),

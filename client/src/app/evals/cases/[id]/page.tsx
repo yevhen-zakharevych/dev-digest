@@ -9,7 +9,7 @@ import { ErrorState, Skeleton } from "@devdigest/ui";
 import { AppShell } from "../../../../components/app-shell/AppShell";
 import { useEvalCase } from "../../../../lib/hooks/evals";
 import { ApiError } from "../../../../lib/api";
-import { EvalCaseEditor } from "../_components/EvalCaseEditor/EvalCaseEditor";
+import { EvalCaseEditor } from "@/features/evals/components/EvalCaseEditor/EvalCaseEditor";
 
 export default function EvalCasePage() {
   const t = useTranslations("eval.page");

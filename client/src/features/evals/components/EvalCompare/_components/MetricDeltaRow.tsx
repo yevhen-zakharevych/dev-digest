@@ -2,7 +2,7 @@
 
 import React from "react";
 import { Icon } from "@devdigest/ui";
-import { formatPercent } from "../../../../_lib/format";
+import { formatPercent } from "../../../format";
 import { s } from "../styles";
 
 /**

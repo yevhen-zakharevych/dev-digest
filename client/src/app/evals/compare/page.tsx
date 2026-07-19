@@ -8,7 +8,7 @@ import React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { AppShell } from "../../../components/app-shell/AppShell";
-import { EvalCompare } from "./_components/EvalCompare/EvalCompare";
+import { EvalCompare } from "@/features/evals/components/EvalCompare/EvalCompare";
 
 export default function EvalComparePage() {
   const t = useTranslations("eval.page");

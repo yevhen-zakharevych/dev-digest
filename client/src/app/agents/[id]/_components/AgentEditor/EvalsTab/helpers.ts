@@ -4,7 +4,7 @@
    `useEvalRun`) into per-case rows; nothing else in the client consumes
    them yet (co-location rule, `client/AGENTS.md`).
 
-   NOTE: `client/src/app/evals/_lib/format.ts` already carries a near-
+   NOTE: `client/src/features/evals/format.ts` already carries a near-
    identical `formatPercent`/`formatCost`/`formatDateTime` set, but that
    module is route-local (`_lib` under `app/evals/**`, owned by a sibling
    task in this same wave) and the architecture convention is explicit that

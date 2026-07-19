@@ -13,21 +13,32 @@ vi.mock("../../../../../../../lib/hooks/reviews", () => ({
   useFindingAction: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
-const push = vi.fn();
-vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push }),
-}));
-
-const seedMutate = vi.fn();
+// Seeding resolves to a case; the panel then opens the modal (not a page
+// navigation) — the modal itself is stubbed so this test stays scoped to the
+// panel's own responsibility: turn a seed result into an open modal.
+const seedMutate = vi.fn(
+  (
+    _findingId: string,
+    opts?: { onSuccess?: (r: { case: { id: string }; created: boolean }) => void },
+  ) => opts?.onSuccess?.({ case: { id: "case-9" }, created: true }),
+);
 vi.mock("@/lib/hooks/evals", () => ({
   useSeedEvalCaseFromFinding: () => ({ mutate: seedMutate }),
+}));
+
+vi.mock("@/features/evals/components/EvalCaseModal", () => ({
+  EvalCaseModal: ({ caseId, onClose }: { caseId: string; onClose: () => void }) => (
+    <div data-testid="eval-case-modal">
+      {caseId}
+      <button onClick={onClose}>close-modal</button>
+    </div>
+  ),
 }));
 
 import { FindingsPanel } from "./FindingsPanel";
 
 afterEach(() => {
   cleanup();
-  push.mockClear();
   seedMutate.mockClear();
 });
 
@@ -70,5 +81,15 @@ describe("FindingsPanel (smoke)", () => {
   it("shows the empty state when nothing matches", () => {
     renderWithIntl(<FindingsPanel findings={[]} prId="pr1" />);
     expect(screen.getByText("No findings match")).toBeInTheDocument();
+  });
+
+  it("seeds a decided finding and opens the eval-case modal (no page nav)", () => {
+    const decided: FindingRecord = { ...FINDINGS[0]!, accepted_at: "2026-07-16T00:00:00Z" };
+    renderWithIntl(<FindingsPanel findings={[decided]} prId="pr1" />);
+
+    fireEvent.click(screen.getByRole("button", { name: /turn into eval case/i }));
+
+    expect(seedMutate).toHaveBeenCalledWith("f1", expect.anything());
+    expect(screen.getByTestId("eval-case-modal")).toHaveTextContent("case-9");
   });
 });

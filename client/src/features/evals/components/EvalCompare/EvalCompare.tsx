@@ -3,9 +3,9 @@
 import React from "react";
 import { useTranslations } from "next-intl";
 import { Button, EmptyState, ErrorState, Skeleton } from "@devdigest/ui";
-import { useEvalComparison, useEvalRunHistory, usePromoteEvalRun } from "../../../../../lib/hooks/evals";
-import { ApiError } from "../../../../../lib/api";
-import { formatCost } from "../../../_lib/format";
+import { useEvalComparison, useEvalRunHistory, usePromoteEvalRun } from "@/lib/hooks/evals";
+import { ApiError } from "@/lib/api";
+import { formatCost } from "../../format";
 import { MetricDeltaRow } from "./_components/MetricDeltaRow";
 import { PromptDiff } from "./_components/PromptDiff";
 import { SkillDeltaList } from "./_components/SkillDeltaList";
@@ -28,11 +28,15 @@ export function EvalCompare({
   runIdB,
   agentId,
   onPick,
+  chrome = true,
 }: {
   runIdA: string | null;
   runIdB: string | null;
   agentId: string | null;
   onPick: (a: string, b: string) => void;
+  /** The page renders the "Compare runs · vA → vB" title header; a modal
+   *  wrapper supplies it in the modal chrome, so it passes `chrome={false}`. */
+  chrome?: boolean;
 }) {
   const t = useTranslations("eval");
   const { data: history } = useEvalRunHistory(agentId);
@@ -103,10 +107,12 @@ export function EvalCompare({
 
   return (
     <div style={s.wrap}>
-      <div style={s.head}>
-        <div style={s.title}>{t("compare.title", { a: runLabel(data.base), b: runLabel(data.candidate) })}</div>
-        <div style={s.subtitle}>{t("compare.subtitle")}</div>
-      </div>
+      {chrome && (
+        <div style={s.head}>
+          <div style={s.title}>{t("compare.title", { a: runLabel(data.base), b: runLabel(data.candidate) })}</div>
+          <div style={s.subtitle}>{t("compare.subtitle")}</div>
+        </div>
+      )}
 
       {!data.comparable ? (
         <EmptyState icon="GitPullRequest" title={t("compare.notComparable")} body={t("compare.notComparableHint")} />

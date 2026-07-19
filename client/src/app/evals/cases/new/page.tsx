@@ -8,7 +8,7 @@ import { useTranslations } from "next-intl";
 import { ErrorState, SelectInput } from "@devdigest/ui";
 import { AppShell } from "../../../../components/app-shell/AppShell";
 import { useAgents } from "../../../../lib/hooks/agents";
-import { EvalCaseEditor } from "../_components/EvalCaseEditor/EvalCaseEditor";
+import { EvalCaseEditor } from "@/features/evals/components/EvalCaseEditor/EvalCaseEditor";
 
 export default function NewEvalCasePage() {
   const t = useTranslations("eval.page");

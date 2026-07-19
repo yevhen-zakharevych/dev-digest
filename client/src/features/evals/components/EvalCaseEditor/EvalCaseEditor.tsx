@@ -4,8 +4,8 @@ import React from "react";
 import { useTranslations } from "next-intl";
 import { Badge, Button, Card, CategoryTag, FormField, SeverityBadge, Tabs, TextInput, Textarea, Toggle } from "@devdigest/ui";
 import type { EvalCase, EvalExpectedItem } from "@devdigest/shared";
-import { ApiError } from "../../../../../lib/api";
-import { useCreateEvalCase, useEvalCaseDraft, useRunEvalDraft, useUpdateEvalCase } from "../../../../../lib/hooks/evals";
+import { ApiError } from "@/lib/api";
+import { useCreateEvalCase, useEvalCaseDraft, useRunEvalDraft, useUpdateEvalCase } from "@/lib/hooks/evals";
 import { emptyExpectedItem, freezeRejectionBody, parsePrMeta, validateExpectedItems, type ExpectedItemErrors } from "./helpers";
 import { ExpectedItemsEditor } from "./_components/ExpectedItemsEditor";
 import { DraftFooter } from "./_components/DraftFooter";
@@ -24,10 +24,18 @@ export function EvalCaseEditor({
   agentId,
   existingCase,
   onSaved,
+  onCancel,
+  chrome = true,
 }: {
   agentId: string;
   existingCase?: EvalCase | null;
   onSaved: (c: EvalCase) => void;
+  /** When provided (modal usage), renders a Cancel button that dismisses the
+   *  editor. Omitted on the standalone pages, which navigate instead. */
+  onCancel?: () => void;
+  /** Standalone pages render the editor's own title header; a modal wrapper
+   *  supplies the title in the modal chrome, so it passes `chrome={false}`. */
+  chrome?: boolean;
 }) {
   const t = useTranslations("eval");
   const isNegative = existingCase?.expectation === "must_not_flag";
@@ -145,12 +153,14 @@ export function EvalCaseEditor({
 
   return (
     <div style={s.wrap}>
-      <div style={s.head}>
-        <span style={s.title}>
-          {existingCase ? t("caseEditor.caseTitle", { name: existingCase.name }) : t("caseEditor.newCase")}
-        </span>
-        {existingCase && <Badge mono>{existingCase.expectation === "must_find" ? t("badges.mustFind") : t("badges.mustNotFlag")}</Badge>}
-      </div>
+      {chrome && (
+        <div style={s.head}>
+          <span style={s.title}>
+            {existingCase ? t("caseEditor.caseTitle", { name: existingCase.name }) : t("caseEditor.newCase")}
+          </span>
+          {existingCase && <Badge mono>{existingCase.expectation === "must_find" ? t("badges.mustFind") : t("badges.mustNotFlag")}</Badge>}
+        </div>
+      )}
 
       {isNegative && existingCase?.forbidden_region && (
         <div style={s.negativeBanner}>
@@ -263,6 +273,11 @@ export function EvalCaseEditor({
           <Toggle on={runOnSave} onChange={setRunOnSave} />
           {t("caseEditor.runOnSave")}
         </label>
+        {onCancel && (
+          <Button kind="secondary" onClick={onCancel} style={{ marginLeft: "auto" }}>
+            {t("caseEditor.cancel")}
+          </Button>
+        )}
       </div>
 
       {existingCase && (

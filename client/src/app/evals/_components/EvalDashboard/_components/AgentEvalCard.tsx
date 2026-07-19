@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Badge, Card } from "@devdigest/ui";
 import type { EvalAgentEvalSummary } from "@devdigest/shared";
-import { formatPercent } from "../../../_lib/format";
+import { formatPercent } from "@/features/evals/format";
 import { agentEvalState } from "../helpers";
 import { s } from "../styles";
 

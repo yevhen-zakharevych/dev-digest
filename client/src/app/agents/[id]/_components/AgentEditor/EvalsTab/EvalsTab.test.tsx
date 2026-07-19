@@ -29,6 +29,22 @@ vi.mock("@/lib/hooks/evals", () => ({
   useEvalCaseDraft: () => ({ data: null }),
 }));
 
+// The comparison itself is opened as a modal; stub it so this suite stays
+// scoped to the tab's selection → open-modal wiring.
+vi.mock("@/features/evals/components/EvalCompareModal", () => ({
+  EvalCompareModal: (props: { runIdA: string; runIdB: string }) => (
+    <div data-testid="compare-modal" data-a={props.runIdA} data-b={props.runIdB} />
+  ),
+}));
+
+// New case / Edit open the case editor in a modal (not a page). Stub it so
+// this suite stays scoped to the tab's open-modal wiring.
+vi.mock("@/features/evals/components/EvalCaseModal", () => ({
+  EvalCaseModal: (props: { caseId?: string }) => (
+    <div data-testid="case-modal" data-case={props.caseId ?? "new"} />
+  ),
+}));
+
 import { EvalsTab } from "./EvalsTab";
 
 afterEach(() => {
@@ -269,6 +285,25 @@ describe("EvalsTab — run history is the ONLY way into the comparison (AC-24)",
     expect(compare).toBeEnabled();
   });
 
+  it("opens the comparison in a modal (not a page) with the picked run ids", () => {
+    const a = makeRun({ id: "runA", agent_version: 1 });
+    const b = makeRun({ id: "runB", agent_version: 2, started_at: "2026-07-11T10:00:00.000Z" });
+    mockDashboard = emptyDashboard({ cases_total: 8, recent_runs: [b, a] });
+    mockCases = [makeCase("c1")];
+    renderWithIntl(<EvalsTab agent={AGENT} />);
+
+    expect(screen.queryByTestId("compare-modal")).not.toBeInTheDocument();
+
+    const boxes = screen.getAllByRole("checkbox");
+    fireEvent.click(boxes[0]!); // runB (later-picked lands at index 1 → base `a`)
+    fireEvent.click(boxes[1]!); // runA
+    fireEvent.click(screen.getByRole("button", { name: /^compare$/i }));
+
+    const modal = screen.getByTestId("compare-modal");
+    expect(modal).toHaveAttribute("data-a", "runB");
+    expect(modal).toHaveAttribute("data-b", "runA");
+  });
+
   it("says so plainly when the agent has never been run, instead of an empty table", () => {
     mockDashboard = emptyDashboard({ cases_total: 8, recent_runs: [] });
     mockCases = [makeCase("c1")];
@@ -276,5 +311,26 @@ describe("EvalsTab — run history is the ONLY way into the comparison (AC-24)",
 
     expect(screen.getByText(/no runs yet/i)).toBeInTheDocument();
     expect(screen.queryByTestId("run-row-runA")).not.toBeInTheDocument();
+  });
+});
+
+describe("EvalsTab — case authoring opens a modal, not a page", () => {
+  it("New case opens the editor modal in create mode", () => {
+    mockDashboard = emptyDashboard({ cases_total: 1 });
+    mockCases = [makeCase("c1")];
+    renderWithIntl(<EvalsTab agent={AGENT} />);
+
+    expect(screen.queryByTestId("case-modal")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "New case" }));
+    expect(screen.getByTestId("case-modal")).toHaveAttribute("data-case", "new");
+  });
+
+  it("Edit opens the editor modal for that case id", () => {
+    mockDashboard = emptyDashboard({ cases_total: 1 });
+    mockCases = [makeCase("c1")];
+    renderWithIntl(<EvalsTab agent={AGENT} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    expect(screen.getByTestId("case-modal")).toHaveAttribute("data-case", "c1");
   });
 });

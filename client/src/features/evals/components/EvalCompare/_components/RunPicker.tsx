@@ -4,7 +4,7 @@ import React from "react";
 import { useTranslations } from "next-intl";
 import { Badge, Button, Checkbox, EmptyState } from "@devdigest/ui";
 import type { EvalRunSummary } from "@devdigest/shared";
-import { formatDateTime } from "../../../../_lib/format";
+import { formatDateTime } from "../../../format";
 import { runLabel } from "../helpers";
 import { s } from "../styles";
 
