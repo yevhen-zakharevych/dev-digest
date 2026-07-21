@@ -30,6 +30,12 @@ const EnvSchema = z.object({
   WEB_PORT: z.coerce.number().int().default(3000),
   DEVDIGEST_MCP_RUN_TIMEOUT_MS: z.coerce.number().int().default(120000),
   DEVDIGEST_CLONE_DIR: z.string().optional(),
+  // DIRECTORY holding the prebuilt CI runner (`agent-runner`'s build output).
+  // Every file in it ships in the exported bundle — the runner is NOT a single
+  // entrypoint (AC-6a): the build also emits a `package.json` declaring the
+  // module type and lazily-loaded chunks whose names move with dependencies.
+  // Not a secret (see the note above) — this feature reads no model key at all.
+  DEVDIGEST_CI_RUNNER_DIR: z.string().optional(),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   // `.env` (and .env.example) ship `LOG_LEVEL=` empty; an empty string is not a
   // valid enum member, so coerce '' → undefined to fall through to the default.
@@ -45,6 +51,12 @@ export type AppConfig = {
   webPort: number;
   /** Absolute path where repos are cloned (~/.devdigest/workspace by default). */
   cloneDir: string;
+  /**
+   * Absolute path to the DIRECTORY holding the prebuilt CI runner
+   * (`../agent-runner/dist` by default). Read by `modules/ci/runner-bundle.ts`,
+   * which ships EVERY file found in it — never an allowlisted filename set.
+   */
+  ciRunnerDir: string;
   /** Absolute path to the writable secrets store (BYO keys from the UI). */
   secretsPath: string;
   nodeEnv: 'development' | 'test' | 'production';
@@ -69,11 +81,19 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const cloneDirRaw =
     parsed.DEVDIGEST_CLONE_DIR ?? join(homedir(), '.devdigest', 'workspace');
   const cloneDir = isAbsolute(cloneDirRaw) ? cloneDirRaw : resolve(process.cwd(), cloneDirRaw);
+  // Resolved exactly like cloneDir: absolute wins, otherwise relative to cwd
+  // (the API is started from `server/`, so the default lands on
+  // `<repo>/agent-runner/dist`).
+  const ciRunnerDirRaw = parsed.DEVDIGEST_CI_RUNNER_DIR ?? join('..', 'agent-runner', 'dist');
+  const ciRunnerDir = isAbsolute(ciRunnerDirRaw)
+    ? ciRunnerDirRaw
+    : resolve(process.cwd(), ciRunnerDirRaw);
   return {
     databaseUrl: parsed.DATABASE_URL,
     apiPort: parsed.API_PORT,
     webPort: parsed.WEB_PORT,
     cloneDir,
+    ciRunnerDir,
     secretsPath: join(homedir(), '.devdigest', 'secrets.json'),
     nodeEnv: parsed.NODE_ENV,
     logLevel: parsed.LOG_LEVEL ?? (parsed.NODE_ENV === 'test' ? 'silent' : 'info'),

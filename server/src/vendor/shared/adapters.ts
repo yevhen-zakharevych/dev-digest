@@ -140,6 +140,27 @@ export interface CommitFilesPayload {
   files: CommitFile[];
 }
 
+/** One GitHub Actions workflow run, reduced to what the CI Runs ingest reads. */
+export interface CiWorkflowRunRef {
+  id: number;
+  htmlUrl: string;
+  /** GitHub's own lifecycle: `queued` | `in_progress` | `completed` | … */
+  status: string;
+  /** Null while the run is still going. NEVER used to derive a CI run's status — the
+   *  result artifact is the only authority there. */
+  conclusion: string | null;
+  prNumber: number | null;
+  createdAt: string;
+}
+
+/**
+ * NOTE ON THE CLIENT COPY. `client/src/vendor/shared/adapters.ts` deliberately does NOT
+ * carry `commitFiles`, `findOpenPr`, `listWorkflowRuns` or `downloadRunResultArtifact` —
+ * the web app never performs GitHub write or Actions operations, so these live in a
+ * server-only cluster. The general rule ("a port change is a two-file edit") still holds
+ * for anything the client actually calls; this asymmetry is intentional and pre-existing,
+ * not drift to be "fixed" by copying one file over the other.
+ */
 export interface GitHubClient {
   listPullRequests(repo: RepoRef): Promise<PrMeta[]>;
   getPullRequest(repo: RepoRef, n: number): Promise<PrDetail>;
@@ -161,6 +182,31 @@ export interface GitHubClient {
   commitFiles(repo: RepoRef, payload: CommitFilesPayload): Promise<{ branch: string }>;
   /** The open PR whose head is `branch`, if any (so re-publish reuses it). */
   findOpenPr(repo: RepoRef, branch: string): Promise<{ url: string } | null>;
+  /**
+   * Recent GitHub Actions runs of ONE workflow file, newest first, capped at `limit`.
+   *
+   * Used by the CI Runs manual refresh. `limit` is the caller's bound (the CI module caps
+   * it), not a property of the port.
+   */
+  listWorkflowRuns(
+    repo: RepoRef,
+    workflowFile: string,
+    limit: number,
+  ): Promise<CiWorkflowRunRef[]>;
+  /**
+   * Download one workflow run's artifact and return a SINGLE entry's text.
+   *
+   * Returns `null` — never throws — when the artifact is absent, oversized, unreadable, or
+   * does not contain `entryName`. That is deliberate: the CI ingest treats every one of
+   * those cases identically ("no readable artifact"), so a null result IS the contract
+   * rather than an error path each caller re-derives. Nothing is written to disk.
+   */
+  downloadRunResultArtifact(
+    repo: RepoRef,
+    runId: number,
+    artifactName: string,
+    entryName: string,
+  ): Promise<string | null>;
   getIssue(repo: RepoRef, n: number): Promise<IssueMeta>;
   /** GET /user — for "posting as @user". */
   currentLogin(): Promise<string>;

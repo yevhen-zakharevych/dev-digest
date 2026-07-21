@@ -10,11 +10,20 @@ import type {
   PrReviewComment,
   OpenPrPayload,
   CommitFilesPayload,
+  CiWorkflowRunRef,
   IssueMeta,
 } from '@devdigest/shared';
+import AdmZip from 'adm-zip';
 import { withRetry, withTimeout } from '../../platform/resilience.js';
 
 const TIMEOUT = 30_000;
+
+/**
+ * Hard ceiling on a downloaded Actions artifact. The archive is produced in a THIRD-PARTY
+ * repository's CI, so its size is attacker-influenced; anything larger is refused before a
+ * byte is parsed, and never touches disk.
+ */
+export const MAX_ARTIFACT_BYTES = 5 * 1024 * 1024;
 
 function mapStatus(state: string, merged: boolean | undefined): PrStatus {
   if (merged) return 'merged';
@@ -286,15 +295,32 @@ export class OctokitGitHubClient implements GitHubClient {
 
           // New tree layered on the parent's tree (so unrelated files are kept).
           const parentCommit = await g.getCommit({ owner, repo: name, commit_sha: parentSha });
+
+          // Blob per file, referenced by SHA — NOT inline `content` in the tree.
+          // Inlining puts every file's full text into one createTree request body, which
+          // does not survive a large payload (the CI export ships a multi-megabyte bundled
+          // runner). This is also what the port's own doc comment promises.
+          const blobs = await Promise.all(
+            payload.files.map(async (f) => {
+              const blob = await g.createBlob({
+                owner,
+                repo: name,
+                content: Buffer.from(f.contents, 'utf8').toString('base64'),
+                encoding: 'base64',
+              });
+              return { path: f.path, sha: blob.data.sha };
+            }),
+          );
+
           const tree = await g.createTree({
             owner,
             repo: name,
             base_tree: parentCommit.data.tree.sha,
-            tree: payload.files.map((f) => ({
-              path: f.path,
-              mode: '100644',
-              type: 'blob',
-              content: f.contents,
+            tree: blobs.map((b) => ({
+              path: b.path,
+              mode: '100644' as const,
+              type: 'blob' as const,
+              sha: b.sha,
             })),
           });
 
@@ -346,6 +372,102 @@ export class OctokitGitHubClient implements GitHubClient {
         TIMEOUT,
       ),
     );
+  }
+
+  async listWorkflowRuns(
+    repo: RepoRef,
+    workflowFile: string,
+    limit: number,
+  ): Promise<CiWorkflowRunRef[]> {
+    return withRetry(() =>
+      withTimeout(
+        (async () => {
+          const res = await this.octokit.rest.actions.listWorkflowRuns({
+            owner: repo.owner,
+            repo: repo.name,
+            workflow_id: workflowFile,
+            event: 'pull_request',
+            per_page: limit,
+          });
+          return res.data.workflow_runs.map((r) => ({
+            id: r.id,
+            htmlUrl: r.html_url,
+            status: r.status ?? 'unknown',
+            conclusion: r.conclusion ?? null,
+            prNumber: r.pull_requests?.[0]?.number ?? null,
+            createdAt: r.created_at,
+          }));
+        })(),
+        TIMEOUT,
+      ),
+    );
+  }
+
+  async downloadRunResultArtifact(
+    repo: RepoRef,
+    runId: number,
+    artifactName: string,
+    entryName: string,
+  ): Promise<string | null> {
+    // Every failure below is the SAME outcome for the caller ("no readable artifact"), so
+    // this returns null rather than throwing — see the port's doc comment. A throw here
+    // would abort the whole refresh over one unreadable third-party archive.
+    try {
+      return await withTimeout(
+        (async () => {
+          const list = await this.octokit.rest.actions.listWorkflowRunArtifacts({
+            owner: repo.owner,
+            repo: repo.name,
+            run_id: runId,
+            per_page: 100,
+          });
+          const artifact = list.data.artifacts.find((a) => a.name === artifactName);
+          if (!artifact || artifact.expired) return null;
+          // Refuse on GitHub's declared size BEFORE downloading anything.
+          if (artifact.size_in_bytes > MAX_ARTIFACT_BYTES) return null;
+
+          const dl = await this.octokit.rest.actions.downloadArtifact({
+            owner: repo.owner,
+            repo: repo.name,
+            artifact_id: artifact.id,
+            archive_format: 'zip',
+          });
+          const buf = Buffer.from(dl.data as ArrayBuffer);
+          // …and again on what actually arrived: the declared size is third-party input.
+          if (buf.byteLength > MAX_ARTIFACT_BYTES) return null;
+
+          // Read the ONE expected entry in memory. Never `extractAllTo` — that would write
+          // attacker-named paths to disk (zip-slip).
+          const entry = new AdmZip(buf).getEntry(entryName);
+          if (!entry) return null;
+
+          // Bound the DECOMPRESSED size before touching the data.
+          //
+          // The two checks above bound the COMPRESSED archive, which is not the thing that
+          // exhausts memory. `adm-zip@0.5.18` allocates the output buffer from the size the
+          // archive DECLARES for the entry, before inflating anything
+          // (`zipEntry.js:103` — `Buffer.alloc(_centralHeader.size)`), and passes that same
+          // declared value as the inflate ceiling (`methods/inflater.js:5`), so a producer
+          // that lies picks its own limit. Measured: a 185-BYTE archive declaring 1.5 GB
+          // allocates 1.5 GB of RSS and blocks the event loop for ~5.6 s before failing its
+          // CRC check; declare 4 GB and the process is OOM-killed instead. Neither the
+          // surrounding `withTimeout` nor the `catch` below can help — the allocation and
+          // the inflate are synchronous and hold the only thread, and an OOM is not
+          // catchable. The refresh path calls this once per completed run per installation,
+          // so one request multiplies it.
+          //
+          // Checking the declared size is exactly the right guard: it IS the number that
+          // drives the allocation. An archive that under-declares gets cut off by adm-zip's
+          // own ceiling instead.
+          if (entry.header.size > MAX_ARTIFACT_BYTES) return null;
+
+          return entry.getData().toString('utf8');
+        })(),
+        TIMEOUT,
+      );
+    } catch {
+      return null;
+    }
   }
 
   async getIssue(repo: RepoRef, n: number): Promise<IssueMeta> {

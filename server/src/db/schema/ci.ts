@@ -23,4 +23,10 @@ export const ciRuns = pgTable('ci_runs', {
   costUsd: doublePrecision('cost_usd'),
   githubUrl: text('github_url'),
   source: text('source'),
+  // `agent` and `duration_s` close a pre-existing gap: the `CiRun` contract already
+  // declared both (`contracts/eval-ci.ts`) while this table carried neither, so the API
+  // could not serve what the CI Runs row displays. Additive and nullable — a run whose
+  // result artifact was missing or invalid persists NO field from it, including these.
+  agent: text('agent'),
+  durationS: doublePrecision('duration_s'),
 });

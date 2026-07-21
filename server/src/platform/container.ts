@@ -25,6 +25,11 @@ import { PriceBook } from './price-book.js';
 import { ConfigError } from './errors.js';
 import { AgentsRepository } from '../modules/agents/repository.js';
 import { ReviewRepository } from '../modules/reviews/repository.js';
+import { CiRepository } from '../modules/ci/repository.js';
+import {
+  FsRunnerBundleReader,
+  type RunnerBundleReader,
+} from '../modules/ci/runner-bundle.js';
 import type { RepoIntel } from '../modules/repo-intel/types.js';
 import { RepoIntelService } from '../modules/repo-intel/service.js';
 import { type DepGraph, DepCruiseGraph } from '../adapters/depgraph/index.js';
@@ -51,6 +56,12 @@ export interface ContainerOverrides {
   /** repo-intel T3 adapters — only the indexer pipeline reads these. */
   depgraph?: DepGraph;
   tokenizer?: Tokenizer;
+  /**
+   * Prebuilt CI runner reader (export-to-CI). Injected in tests because
+   * `agent-runner/dist/` is a build artifact that is NOT in git — without an
+   * override every export test would exercise only AC-8's failure branch.
+   */
+  runnerBundle?: RunnerBundleReader;
 }
 
 export class Container {
@@ -60,6 +71,12 @@ export class Container {
   readonly auth: AuthProvider;
   readonly jobs: JobRunner;
   readonly runBus: RunBus;
+  /**
+   * Reads the prebuilt CI runner from `config.ciRunnerDir`. Eager like `auth`
+   * (it holds no credential and opens no connection); the fs read happens on
+   * `read()`, not here.
+   */
+  readonly runnerBundle: RunnerBundleReader;
 
   private _git?: GitClient;
   private _github?: GitHubClient;
@@ -72,6 +89,7 @@ export class Container {
   // `container.agentsRepo` instead of reaching into another module's folder.
   private _agentsRepo?: AgentsRepository;
   private _reviewRepo?: ReviewRepository;
+  private _ciRepo?: CiRepository;
   private _repoIntel?: RepoIntel;
   private _depgraph?: DepGraph;
   private _tokenizer?: Tokenizer;
@@ -84,6 +102,7 @@ export class Container {
     this.auth = overrides.auth ?? new LocalNoAuthProvider(db);
     this.runBus = runBus;
     this.jobs = new JobRunner(db);
+    this.runnerBundle = overrides.runnerBundle ?? new FsRunnerBundleReader(config.ciRunnerDir);
   }
 
   get git(): GitClient {
@@ -98,6 +117,11 @@ export class Container {
 
   get reviewRepo(): ReviewRepository {
     return (this._reviewRepo ??= new ReviewRepository(this.db));
+  }
+
+  /** `ci_installations` + `ci_runs` (export-to-CI). Workspace-scoped throughout. */
+  get ciRepo(): CiRepository {
+    return (this._ciRepo ??= new CiRepository(this.db));
   }
 
   get codeIndex(): CodeIndex {

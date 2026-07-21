@@ -375,6 +375,20 @@ export const CiExportInput = z.object({
   post_as: z.enum(['github_review', 'pr_comment', 'none']).default('github_review'),
   triggers: z.array(z.string()).default(['opened', 'synchronize', 'reopened']),
   base: z.string().default('main'),
+  /**
+   * The user-edited workflow TEXT from the wizard's Preview step.
+   *
+   * Text only — the destination path is chosen by the server (`modules/ci/constants.ts`)
+   * and NEVER by the caller. There is deliberately no `path` field here and no way to add
+   * a second file: a caller-supplied path reaching a file/git helper is an RCE sink
+   * (`server/INSIGHTS.md` — the tree-boundary guards constrain WHERE a path lands, not
+   * WHICH file it names). The service rejects any request carrying anything beyond this
+   * one override.
+   *
+   * The `.max()` here is a cheap character-level first gate; the authoritative check is
+   * byte-accurate (`Buffer.byteLength(workflow, 'utf8') > 65536`) and lives in the service.
+   */
+  workflow: z.string().max(65536).optional(),
 });
 export type CiExportInput = z.infer<typeof CiExportInput>;
 /** Caller-facing input type — `.default()` fields stay optional (web hooks). */

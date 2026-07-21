@@ -21,10 +21,10 @@
     "@fastify/autoload": "^6.0.3",
     "@fastify/cors": "^10.0.2",
     "@fastify/helmet": "^13.0.2",
+    "@fastify/multipart": "^9.0.1",
     "@fastify/rate-limit": "^11.0.0",
     "@vscode/ripgrep": "^1.15.9",
     "adm-zip": "^0.5.16",
-    "@fastify/multipart": "^9.0.1",
     "dependency-cruiser": "^17.4.3",
     "dotenv": "^16.4.7",
     "drizzle-orm": "^0.38.3",
@@ -39,6 +39,7 @@
     "p-queue": "^8.0.1",
     "postgres": "^3.4.5",
     "simple-git": "^3.27.0",
+    "yaml": "^2.9.0",
     "zod": "^3.24.1"
   },
   "devDependencies": {

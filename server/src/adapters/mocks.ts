@@ -16,6 +16,7 @@ import type {
   PrReviewComment,
   OpenPrPayload,
   CommitFilesPayload,
+  CiWorkflowRunRef,
   IssueMeta,
   GitClient,
   CloneOptions,
@@ -126,6 +127,17 @@ export interface MockGitHubOptions {
   login?: string;
   /** Existing inline review comments returned by listReviewComments. */
   comments?: PrReviewComment[];
+  /** Actions runs returned by `listWorkflowRuns`, newest first. */
+  workflowRuns?: CiWorkflowRunRef[];
+  /**
+   * Result-artifact text per workflow-run id, as `downloadRunResultArtifact` would return
+   * it. A run id absent from this map, or mapped to `null`, reproduces every
+   * "no readable artifact" case at once (missing / oversized / corrupt archive) — which is
+   * exactly how the port behaves, so a test does not need three different fixtures.
+   */
+  artifacts?: Record<number, string | null>;
+  /** Make the next write throw — drives the "GitHub rejected the push" branch. */
+  failWrites?: string;
 }
 
 export class MockGitHubClient implements GitHubClient {
@@ -133,6 +145,18 @@ export class MockGitHubClient implements GitHubClient {
   public openedPrs: OpenPrPayload[] = [];
   public committed: CommitFilesPayload[] = [];
   public createdComments: CreateReviewCommentInput[] = [];
+  /**
+   * Every mutating call, in order. A test that must prove NOTHING was written (the preview
+   * path, and any request rejected by validation) asserts this is empty — checking
+   * `committed`/`openedPrs` individually would silently miss a future write method.
+   */
+  public writes: { kind: 'commitFiles' | 'openPullRequest' | 'postReview'; at: number }[] = [];
+  /** Committed paths, flattened across every commit — the AC-30 "only .devdigest/**" check. */
+  public get committedPaths(): string[] {
+    return this.committed.flatMap((c) => c.files.map((f) => f.path));
+  }
+  public listWorkflowRunsCalls: { workflowFile: string; limit: number }[] = [];
+  public artifactCalls: { runId: number; artifactName: string; entryName: string }[] = [];
 
   constructor(private opts: MockGitHubOptions = {}) {}
 
@@ -217,11 +241,15 @@ export class MockGitHubClient implements GitHubClient {
   }
 
   async openPullRequest(_repo: RepoRef, payload: OpenPrPayload): Promise<{ url: string }> {
+    if (this.opts.failWrites) throw new Error(this.opts.failWrites);
+    this.writes.push({ kind: 'openPullRequest', at: this.writes.length });
     this.openedPrs.push(payload);
     return { url: 'https://github.com/mock/mock/pull/1' };
   }
 
   async commitFiles(_repo: RepoRef, payload: CommitFilesPayload): Promise<{ branch: string }> {
+    if (this.opts.failWrites) throw new Error(this.opts.failWrites);
+    this.writes.push({ kind: 'commitFiles', at: this.writes.length });
     this.committed.push(payload);
     return { branch: payload.branch };
   }
@@ -229,6 +257,28 @@ export class MockGitHubClient implements GitHubClient {
   async findOpenPr(_repo: RepoRef, branch: string): Promise<{ url: string } | null> {
     const pr = this.openedPrs.find((p) => p.head === branch);
     return pr ? { url: 'https://github.com/mock/mock/pull/1' } : null;
+  }
+
+  async listWorkflowRuns(
+    _repo: RepoRef,
+    workflowFile: string,
+    limit: number,
+  ): Promise<CiWorkflowRunRef[]> {
+    this.listWorkflowRunsCalls.push({ workflowFile, limit });
+    if (this.opts.failWrites) throw new Error(this.opts.failWrites);
+    return (this.opts.workflowRuns ?? []).slice(0, limit);
+  }
+
+  async downloadRunResultArtifact(
+    _repo: RepoRef,
+    runId: number,
+    artifactName: string,
+    entryName: string,
+  ): Promise<string | null> {
+    this.artifactCalls.push({ runId, artifactName, entryName });
+    // `?? null` collapses "run id absent from the map" and "explicitly null" into the one
+    // result the real port promises for every unreadable-artifact case.
+    return this.opts.artifacts?.[runId] ?? null;
   }
 
   async getIssue(_repo: RepoRef, n: number): Promise<IssueMeta> {
