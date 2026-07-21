@@ -171,6 +171,8 @@ export class ReviewRepository {
     model: string | null;
     /** PR head SHA at queue time — groups runs into review cycles. */
     headSha: string | null;
+    /** The multi-agent review that launched this run, when any (null otherwise). */
+    multiAgentRunId?: string | null;
   }): Promise<string> {
     return runRepo.createAgentRun(this.db, values);
   }

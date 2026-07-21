@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { Severity } from './findings.js';
+import { ReviewRunTarget } from './review-api.js';
 
 /**
  * A5 — Observability / Multi-agent contracts (L07).
@@ -38,7 +39,11 @@ export const AgentColumn = z.object({
   agent_name: z.string(),
   provider: z.string().nullable(),
   model: z.string().nullable(),
-  status: z.enum(['done', 'failed', 'running']),
+  /** `cancelled` is terminal but NOT completed — like `failed`, such an agent
+   *  never answered, so it contributes no conflict take (its silence is not a
+   *  "did not flag"). Free-text `agent_runs.status` values outside this set are
+   *  mapped to `running` before serialization. */
+  status: z.enum(['done', 'failed', 'running', 'cancelled']),
   verdict: z.string().nullable(),
   score: z.number().int().nullable(),
   summary: z.string().nullable(),
@@ -84,6 +89,27 @@ export const MultiAgentRun = z.object({
   conflicts: z.array(Conflict),
 });
 export type MultiAgentRun = z.infer<typeof MultiAgentRun>;
+
+/**
+ * Body of `POST /pulls/:id/multi-agent-runs`. camelCase, matching the existing
+ * `POST /pulls/:id/review` request convention (`RunRequest`); the RESPONSE below
+ * stays snake_case like the rest of this file. Non-empty by schema: an empty or
+ * missing set is a 400 at the edge, never a zero-agent multi-run row.
+ */
+export const CreateMultiRunBody = z.object({
+  agentIds: z.array(z.string().uuid()).min(1),
+});
+export type CreateMultiRunBody = z.infer<typeof CreateMultiRunBody>;
+
+/** Response of `POST /pulls/:id/multi-agent-runs` — the created grouping plus the
+ *  launched run targets (the SAME shape `POST /pulls/:id/review` returns, reused
+ *  rather than redeclared, so clients subscribe to SSE identically). */
+export const CreateMultiRunResponse = z.object({
+  multi_run_id: z.string(),
+  pr_id: z.string(),
+  runs: z.array(ReviewRunTarget),
+});
+export type CreateMultiRunResponse = z.infer<typeof CreateMultiRunResponse>;
 
 // ---------------------------------------------------------------------------
 // Per-agent Stats (GET /agents/:id/stats)

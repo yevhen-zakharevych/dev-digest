@@ -26,3 +26,4 @@ test-results/
 
 # pr-self-review gate sentinel (local state, not for sharing)
 .claude/.review-passed
+.claude/settings.local.json
