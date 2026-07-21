@@ -36,6 +36,18 @@ export const NAV: NavGroup[] = [
       { key: "eval",        label: "Eval Dashboard",  icon: "BarChart",   href: "/evals" },
     ],
   },
+  {
+    // GLOBAL holds cross-cutting review surfaces. The design also places
+    // Memory, Agent Performance and CI Runs here — deliberately NOT added:
+    // none of those routes exists yet, and a nav entry pointing at a missing
+    // route is a dangling link (the starter already ships one such trap).
+    // Multi-Agent Review keeps its repo-scoped href; `resolveHref` fills
+    // `:repoId` from the active repo exactly as it does for the WORKSPACE items.
+    section: "GLOBAL",
+    items: [
+      { key: "multi-agent", label: "Multi-Agent Review", icon: "Users", href: "/repos/:repoId/multi-agent" },
+    ],
+  },
 ];
 
 export const SETTINGS_ITEM: NavItemDef = {

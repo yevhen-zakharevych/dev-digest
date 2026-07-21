@@ -124,6 +124,11 @@ export async function createAgentRun(
     model: string | null;
     /** PR head SHA at the moment the run is queued — defines the review cycle. */
     headSha: string | null;
+    /** The multi-agent review that launched this run, when any. Written HERE, at
+     *  insert time, rather than by a follow-up UPDATE: the row is never briefly
+     *  visible as an unlinked run, so the results read model cannot observe a
+     *  half-formed multi-run. Omit (or null) for the single-agent path. */
+    multiAgentRunId?: string | null;
   },
 ): Promise<string> {
   const [row] = await db
@@ -135,6 +140,7 @@ export async function createAgentRun(
       provider: values.provider,
       model: values.model,
       headSha: values.headSha,
+      multiAgentRunId: values.multiAgentRunId ?? null,
       status: 'running',
       source: 'local',
     })

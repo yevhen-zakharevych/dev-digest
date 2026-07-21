@@ -15,6 +15,13 @@ import { reviewToDto } from './helpers.js';
 export { findingRowToDto, reviewToDto } from './helpers.js';
 export type { ReviewDto, ReviewDtoFinding } from './helpers.js';
 
+/** Per-launch options for {@link ReviewService.runReview}. */
+export type RunReviewOptions = {
+  logger?: Logger;
+  /** Links every `agent_run` this launch creates to a `multi_agent_runs` row. */
+  multiAgentRunId?: string;
+};
+
 /**
  * Review service (the core). Orchestrates:
  *   diff → assemblePrompt(system + repo-map + diff)
@@ -47,13 +54,29 @@ export class ReviewService {
   // ===========================================================================
 
   /**
-   * Resolve which agents to run. `all` → all enabled agents; else a single agent.
+   * Resolve which agents to run. `all` → all enabled agents; `agentIds` → exactly
+   * that set, in the order given; else a single agent.
+   *
+   * Every branch resolves through the workspace-scoped `agents.getById`, so an id
+   * belonging to another workspace is indistinguishable from a non-existent one —
+   * a `NotFoundError` (404), never another tenant's agent (AC-25).
    */
   async resolveTargets(
     workspaceId: string,
-    opts: { agentId?: string; all?: boolean },
+    opts: { agentId?: string; agentIds?: string[]; all?: boolean },
   ): Promise<AgentRow[]> {
     if (opts.all) return this.agents.listEnabled(workspaceId);
+    if (opts.agentIds && opts.agentIds.length > 0) {
+      const targets: AgentRow[] = [];
+      // Sequential + fail-fast: an unknown id must abort BEFORE any agent_run row
+      // is created, so a rejected request never leaves a partial multi-run behind.
+      for (const id of opts.agentIds) {
+        const agent = await this.agents.getById(workspaceId, id);
+        if (!agent) throw new NotFoundError('Agent not found');
+        targets.push(agent);
+      }
+      return targets;
+    }
     if (opts.agentId) {
       const agent = await this.agents.getById(workspaceId, opts.agentId);
       if (!agent) throw new NotFoundError('Agent not found');
@@ -105,13 +128,25 @@ export class ReviewService {
    * (= agent_runs.id) created up-front so the SSE route can be subscribed
    * before/while the run progresses. A partial failure in one agent does not
    * abort the others.
+   *
+   * `opts.multiAgentRunId` is the ONLY multi-agent concession in this path: when
+   * the caller is the multi-run create route it is threaded into the up-front
+   * `createAgentRun` loop so each row is linked at insert time. Optional, so
+   * `POST /pulls/:id/review` (and, over HTTP, the MCP `run_agent_on_pr` tool)
+   * call this unchanged and keep writing NULL.
+   *
+   * The tail is an options BAG rather than positional optionals: `logger` is an
+   * infrastructure port and `multiAgentRunId` a domain FK, and a third caller
+   * needing one more per-launch attribute would otherwise append a sixth
+   * positional and force `undefined` placeholders at every site.
    */
   async runReview(
     workspaceId: string,
     prId: string,
     targets: AgentRow[],
-    logger?: Logger,
+    opts: RunReviewOptions = {},
   ): Promise<{ runs: { run_id: string; agent_id: string; agent_name: string }[]; reviews: ReviewDto[] }> {
+    const { logger, multiAgentRunId } = opts;
     const pull = await this.repo.getPull(workspaceId, prId);
     if (!pull) throw new NotFoundError('Pull request not found');
     const repo = await this.repo.getRepo(pull.repoId);
@@ -130,6 +165,7 @@ export class ReviewService {
         provider: agent.provider,
         model: agent.model,
         headSha: pull.headSha,
+        multiAgentRunId: multiAgentRunId ?? null,
       });
       runs.push({ run_id: runId, agent_id: agent.id, agent_name: agent.name });
       jobs.push({ agent, runId });

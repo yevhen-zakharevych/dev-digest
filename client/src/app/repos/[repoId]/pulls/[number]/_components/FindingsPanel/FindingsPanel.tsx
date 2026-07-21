@@ -11,7 +11,7 @@ import type { FindingRecord } from "@devdigest/shared";
 import { ApiError } from "@/lib/api";
 import { useToast } from "@/lib/toast";
 import { useSeedEvalCaseFromFinding } from "@/lib/hooks/evals";
-import { FindingCard, type FindingCardAction } from "../FindingCard/FindingCard";
+import { FindingCard, type FindingCardAction } from "@/features/reviews/components/FindingCard/FindingCard";
 import { FindingTargetContext } from "../../_lib/findingTarget.context";
 import { useFindingAction } from "../../../../../../../lib/hooks/reviews";
 import { KEY_TO_ACTION } from "./constants";

@@ -1,6 +1,7 @@
 import type { Container } from '../../platform/container.js';
 import type {
   Agent,
+  AgentEstimate,
   AgentSkillLink,
   AgentVersion,
   CiFailOn,
@@ -59,6 +60,22 @@ export class AgentsService {
     const rows = await this.repo.list(workspaceId);
     const stats = await this.repo.statsFor(rows.map((r) => r.id));
     return rows.map((r) => toAgentDto(r, stats.get(r.id)?.skillsCount ?? 0));
+  }
+
+  /**
+   * T2 — pre-run estimates (AC-7, AC-9): one entry per agent with `done`
+   * history in this repo. A **separate** read model from `list()` on purpose
+   * (AC-10) — a query failure here must never block agent listing/selection;
+   * the route lets it throw and degrades to "—" hints client-side.
+   */
+  async estimates(workspaceId: string, repoId: string): Promise<AgentEstimate[]> {
+    const rows = await this.repo.runEstimates(workspaceId, repoId);
+    return rows.map((r) => ({
+      agent_id: r.agentId,
+      avg_duration_ms: r.avgDurationMs,
+      avg_cost_usd: r.avgCostUsd,
+      sample_size: r.sampleSize,
+    }));
   }
 
   async get(workspaceId: string, id: string): Promise<Agent | undefined> {

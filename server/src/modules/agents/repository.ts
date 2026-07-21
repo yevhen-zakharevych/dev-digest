@@ -108,6 +108,53 @@ export class AgentsRepository {
       .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.enabled, true)));
   }
 
+  /**
+   * T2 — pre-run estimate aggregates, one row per agent that has at least one
+   * `done` run in this repo (AC-7). `agent_runs` has no `repo_id`
+   * (`server/src/db/schema/runs.ts:8-38`), so scoping to the repo requires an
+   * INNER JOIN through `pull_requests` — which also excludes runs whose PR was
+   * deleted (`agent_runs.prId` is `set null` on delete) since such a run has
+   * no repo. A single grouped aggregate query, not a per-agent fan-out
+   * (`agent_runs` carries zero indexes today).
+   *
+   * `avgCostUsd` is Postgres's `avg(...)` over only the non-null `costUsd`
+   * rows (SQL `avg` ignores NULLs), so it is already the mean over the
+   * "has a cost" subset — never fabricated as 0 when that subset is empty
+   * (§4 Q9 of the multi-agent-review plan; AC-9).
+   */
+  async runEstimates(
+    workspaceId: string,
+    repoId: string,
+  ): Promise<{ agentId: string; avgDurationMs: number | null; avgCostUsd: number | null; sampleSize: number }[]> {
+    const rows = await this.db
+      .select({
+        agentId: t.agentRuns.agentId,
+        avgDurationMs: sql<string | null>`avg(${t.agentRuns.durationMs})`,
+        avgCostUsd: sql<string | null>`avg(${t.agentRuns.costUsd})`,
+        sampleSize: sql<number>`count(*)::int`,
+      })
+      .from(t.agentRuns)
+      .innerJoin(t.pullRequests, eq(t.pullRequests.id, t.agentRuns.prId))
+      .where(
+        and(
+          eq(t.agentRuns.workspaceId, workspaceId),
+          eq(t.pullRequests.repoId, repoId),
+          eq(t.agentRuns.status, 'done'),
+          // agent_id is nullable (set null when the agent is deleted); an
+          // estimate with no agent to attach to is meaningless.
+          sql`${t.agentRuns.agentId} is not null`,
+        ),
+      )
+      .groupBy(t.agentRuns.agentId);
+
+    return rows.map((r) => ({
+      agentId: r.agentId!,
+      avgDurationMs: r.avgDurationMs === null ? null : Number(r.avgDurationMs),
+      avgCostUsd: r.avgCostUsd === null ? null : Number(r.avgCostUsd),
+      sampleSize: r.sampleSize,
+    }));
+  }
+
   async getById(workspaceId: string, id: string): Promise<AgentRow | undefined> {
     const [row] = await this.db
       .select()

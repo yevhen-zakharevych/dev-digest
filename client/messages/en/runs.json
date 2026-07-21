@@ -5,13 +5,27 @@
   },
   "column": {
     "noFindings": "No findings.",
-    "findingsCount": "{count, plural, one {# finding} other {# findings}}"
+    "findingsCount": "{count, plural, one {# finding} other {# findings}}",
+    "status": {
+      "done": "done",
+      "failed": "failed",
+      "running": "running",
+      "cancelled": "cancelled"
+    },
+    "score": "Score",
+    "duration": "Duration",
+    "cost": "Cost",
+    "openFinding": "Open finding: {title}"
   },
   "conflicts": {
     "title": "Where agents disagree",
     "onlyConflicts": "Show only conflicts",
     "empty": "No conflicts — the agents agree on every flagged location.",
-    "didNotFlag": "did not flag"
+    "emptyNoFindings": "No agent flagged anything — there is nothing to compare.",
+    "emptyNoCompleted": "No agent finished — there is nothing to compare.",
+    "didNotFlag": "did not flag",
+    "pending": "still running",
+    "location": "{file}:{line}"
   },
   "tabs": {
     "noSummary": "No summary."
@@ -109,7 +123,7 @@
   },
   "page": {
     "title": "Multi-Agent Review",
-    "subtitle": "this PR through every enabled agent in parallel",
+    "subtitle": "this PR through every enabled agent, one at a time",
     "selectPr": "Select PR",
     "prItem": "#{number} · {title}",
     "view": {
@@ -118,18 +132,28 @@
     },
     "runAll": "Run all agents",
     "running": "Running…",
-    "meta": "{count} agents · fan-out via p-queue · {duration}s total · {cost}",
+    "meta": "{count} agents · run one at a time · {duration}s total · {cost}",
     "noAgents": {
       "title": "Enable agents to run reviews",
-      "body": "Multi-agent review runs the PR through every enabled agent in parallel. You have no agents enabled yet.",
+      "body": "Multi-agent review runs the PR through every enabled agent, one at a time. You have no agents enabled yet.",
       "cta": "Go to Agents"
     },
     "noRun": {
       "title": "No multi-agent run yet",
       "bodyReady": "Run all enabled agents on this PR to see N columns + conflicts.",
       "bodySelect": "Select a PR to begin.",
-      "cta": "Run all agents"
+      "cta": "Run all agents",
+      "bodyConfigure": "Pick the agents you want and run them on this PR to see one column per agent plus where they disagree."
     },
-    "crumb": "Multi-Agent Review"
+    "crumb": "Multi-Agent Review",
+    "selectedAgents": "{count} selected agents · sequential",
+    "configureRun": "Configure run",
+    "loadError": "Couldn't load this multi-agent review",
+    "prNotFound": "PR #{number} could not be found in this repository.",
+    "finding": {
+      "loading": "Loading finding details…",
+      "unavailable": "The full detail for this finding isn't available yet.",
+      "close": "Close finding detail"
+    }
   }
 }

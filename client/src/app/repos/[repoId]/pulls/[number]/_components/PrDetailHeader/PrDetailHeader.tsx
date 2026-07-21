@@ -1,41 +1,31 @@
 "use client";
 
-import React, { useCallback } from "react";
+import React from "react";
 import { Icon, Avatar, Badge, Button, Tabs } from "@devdigest/ui";
-import { RunReviewDropdown } from "../RunReviewDropdown/RunReviewDropdown";
+import { MultiAgentPicker } from "../MultiAgentPicker/MultiAgentPicker";
 import { s } from "./styles";
 import type { PrDetail } from "@/lib/types";
 
 interface PrDetailHeaderProps {
   pr: PrDetail;
   prId: string | null;
+  repoId: string;
   tab: string;
   findingsCount: number;
   /** github.com PR URL; null when the repo's full_name isn't known yet. */
   githubUrl?: string | null;
   onSetTab: (tab: string) => void;
-  onRunStart: () => void;
-  onRunsStarted: () => void;
 }
 
 export function PrDetailHeader({
   pr,
   prId,
+  repoId,
   tab,
   findingsCount,
   githubUrl,
   onSetTab,
-  onRunStart,
-  onRunsStarted,
 }: PrDetailHeaderProps) {
-  const handleRunStart = useCallback(() => {
-    onRunStart();
-  }, [onRunStart]);
-
-  const handleRunsStarted = useCallback(() => {
-    onRunsStarted();
-  }, [onRunsStarted]);
-
   const statusColor =
     pr.status === "merged"
       ? "var(--ok)"
@@ -90,24 +80,20 @@ export function PrDetailHeader({
             View on GitHub
           </Button>
           {prId && (
-            <RunReviewDropdown
+            <MultiAgentPicker
               prId={prId}
+              repoId={repoId}
+              prNumber={pr.number}
               warnMerged={pr.status === "merged" || pr.status === "closed"}
-              onRunStart={handleRunStart}
-              onRunsStarted={handleRunsStarted}
             />
           )}
         </div>
       </div>
-      {(pr.status === "merged" || pr.status === "closed") && (
-        <div style={s.staleBanner}>
-          <Icon.AlertTriangle size={13} style={{ color: "var(--warn)", flexShrink: 0 }} />
-          <span>
-            This PR is already {pr.status} — running a review is informational and won't affect the
-            merged code.
-          </span>
-        </div>
-      )}
+      {/* The merged/closed warning is NOT repeated here: `MultiAgentPicker`
+          already shows it (`warnMerged` above) inside the panel, at the moment
+          the user is actually choosing to run something. A second copy pinned
+          under the header restated it on every visit, including the ones where
+          nobody intends to run a review. */}
       <Tabs
         value={tab}
         onChange={onSetTab}

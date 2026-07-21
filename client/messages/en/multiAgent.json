@@ -1,0 +1,43 @@
+{
+  "picker": {
+    "trigger": "Run agents",
+    "viewResults": "Multi-agent results",
+    "panelLabel": "Pick agents to run",
+    "heading": "Pick agents to run",
+    "clear": "Clear",
+    "configureAgents": "Configure agents…",
+    "runButton": "Run multi-agent review ({count})",
+    "noAgents": "No agents yet — create one",
+    "noHistory": "no history",
+    "mergedWarning": "Already merged — review is informational",
+    "mergedTooltip": "This PR is already merged; running a review won’t affect the merged code.",
+    "summary": {
+      "line": "≈ {time} · {cost} · agents run one at a time",
+      "approximate": "approximate",
+      "noHistory": "no time/cost history yet"
+    }
+  },
+  "configure": {
+    "title": "Multi-Agent Review",
+    "subtitle": "Pick a pull request and the agents to run, see the estimate, then launch a multi-agent review. Agents run one at a time, so the estimate is the sum of their times.",
+    "crumb": "Multi-Agent Review",
+    "pickPrFirst": "Pick a pull request first",
+    "existingRun": "This PR already has a multi-agent run ({count} agents)",
+    "viewResults": "View results",
+    "selectPr": "Select PR",
+    "selectPrPlaceholder": "Select a pull request…",
+    "prItem": "#{number} · {title}",
+    "agentsHeading": "Agents",
+    "selectAll": "Select all",
+    "clearAll": "Clear",
+    "runButton": "Run multi-agent review ({count})",
+    "noAgentsTitle": "No agents to run",
+    "noAgentsBody": "Create an agent first, then come back here to configure a multi-agent run.",
+    "goToAgents": "Go to Agents",
+    "summary": {
+      "line": "{time} · {cost}",
+      "approximate": "approximate — some agents have no run history yet",
+      "noHistory": "No time/cost history yet"
+    }
+  }
+}

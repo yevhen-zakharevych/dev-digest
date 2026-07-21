@@ -1,7 +1,13 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { CiFailOn, Provider, ReviewStrategy, SetAttachedDocsBody } from '@devdigest/shared';
+import {
+  AgentEstimate,
+  CiFailOn,
+  Provider,
+  ReviewStrategy,
+  SetAttachedDocsBody,
+} from '@devdigest/shared';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
 import { NotFoundError } from '../../platform/errors.js';
@@ -22,6 +28,11 @@ const SkillLinkParams = z.object({
   skillId: z.string().uuid(),
 });
 
+/** `/agents/estimates?repoId=` — required uuid query param. */
+const EstimatesQuery = z.object({
+  repoId: z.string().uuid(),
+});
+
 const UpdateSkillLinkBody = z.object({
   enabled: z.boolean(),
 });
@@ -29,6 +40,7 @@ const UpdateSkillLinkBody = z.object({
 /**
  * A2 — agents module (owner A2).
  *   GET    /agents                  → list (workspace-scoped)
+ *   GET    /agents/estimates        → T2: pre-run time/cost hints for a repo
  *   GET    /agents/:id              → one agent
  *   POST   /agents                  → create
  *   PUT    /agents/:id              → update / toggle enabled (versions config)
@@ -86,6 +98,25 @@ export default async function agentsRoutes(appBase: FastifyInstance) {
     const { workspaceId } = await getContext(app.container, req);
     return service.list(workspaceId);
   });
+
+  /**
+   * T2 — pre-run estimates (AC-7, AC-10, AC-25). A **static** segment, so
+   * find-my-way prefers it over `/agents/:id` — do NOT rename to `/agents/:id`-
+   * shaped or move it under `/repos/:id/…` (that family already owns
+   * `/repos/:repoId/…`; a different param name at the same position is a
+   * boot-time find-my-way error). This is a SEPARATE endpoint from `GET
+   * /agents` on purpose: an estimate query failure must never block agent
+   * listing/selection (AC-10) — it simply 500s here and the client degrades
+   * hints to "—".
+   */
+  app.get(
+    '/agents/estimates',
+    { schema: { querystring: EstimatesQuery, response: { 200: z.array(AgentEstimate) } } },
+    async (req) => {
+      const { workspaceId } = await getContext(app.container, req);
+      return service.estimates(workspaceId, req.query.repoId);
+    },
+  );
 
   app.get('/agents/:id', { schema: { params: IdParams } }, async (req) => {
     const { workspaceId } = await getContext(app.container, req);
